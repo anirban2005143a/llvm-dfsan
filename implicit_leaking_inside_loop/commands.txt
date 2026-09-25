@@ -1,0 +1,46 @@
+rm -f FindTaintedCondition.so \
+      dfsan.ll \
+      instrumented.ll \
+      instrumented.o \
+      implicit_runtime.o \
+      test_dfsan
+
+
+clang++ -std=c++17 -fPIC -shared \
+    FindTaintedCondition.cpp \
+    $(llvm-config --cxxflags --ldflags --system-libs --libs core analysis passes) \
+    -o FindTaintedCondition.so
+
+
+clang -O0 \
+    -Xclang -disable-O0-optnone \
+    -g \
+    -fno-discard-value-names \
+    -fsanitize=dataflow \
+    -mllvm -dfsan-conditional-callbacks \
+    -S -emit-llvm \
+    test.c \
+    -o dfsan.ll
+
+
+opt \
+    -load-pass-plugin=./FindTaintedCondition.so \
+    -passes="mem2reg,loop-simplify,find-tainted-condition" \
+    dfsan.ll \
+    -S \
+    -o instrumented.ll
+
+
+clang -c instrumented.ll -o instrumented.o
+
+
+clang -c implicit_runtime.c -o implicit_runtime.o
+
+
+clang -fsanitize=dataflow \
+    instrumented.o \
+    implicit_runtime.o \
+    -o test_dfsan
+
+    
+./test_dfsan >/dev/null
