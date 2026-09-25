@@ -10,10 +10,10 @@ target triple = "x86_64-pc-linux-gnu"
 @__dfsan_track_origins = weak_odr constant i32 0
 @0 = private unnamed_addr constant [2 x i8] c"x\00", align 1
 @1 = private unnamed_addr constant [2 x i8] c"y\00", align 1
-@2 = private unnamed_addr constant [6 x i8] c"clean\00", align 1
+@2 = private unnamed_addr constant [2 x i8] c"z\00", align 1
 @3 = private unnamed_addr constant [2 x i8] c"y\00", align 1
-@4 = private unnamed_addr constant [6 x i8] c"clean\00", align 1
-@5 = private unnamed_addr constant [6 x i8] c"clean\00", align 1
+@4 = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@5 = private unnamed_addr constant [2 x i8] c"z\00", align 1
 
 ; Function Attrs: noinline nounwind uwtable
 define dso_local i32 @main() #0 !dbg !11 {
@@ -27,108 +27,113 @@ define dso_local i32 @main() #0 !dbg !11 {
   %8 = alloca i32, align 4
   %9 = alloca i8, align 1
   %10 = alloca i32, align 4
+  %11 = alloca i8, align 1
+  %12 = alloca i32, align 4
   store i8 0, ptr %1, align 1
   store i32 0, ptr %2, align 4
     #dbg_declare(ptr %3, !16, !DIExpression(), !17)
-  %11 = ptrtoint ptr %3 to i64, !dbg !17
-  %12 = xor i64 %11, 87960930222080, !dbg !17
-  %13 = inttoptr i64 %12 to ptr, !dbg !17
-  store i32 0, ptr %13, align 1, !dbg !17
+  %13 = ptrtoint ptr %3 to i64, !dbg !17
+  %14 = xor i64 %13, 87960930222080, !dbg !17
+  %15 = inttoptr i64 %14 to ptr, !dbg !17
+  store i32 0, ptr %15, align 1, !dbg !17
   store i32 5, ptr %3, align 4, !dbg !17
     #dbg_declare(ptr %4, !18, !DIExpression(), !19)
-  %14 = ptrtoint ptr %4 to i64, !dbg !19
-  %15 = xor i64 %14, 87960930222080, !dbg !19
-  %16 = inttoptr i64 %15 to ptr, !dbg !19
-  store i32 0, ptr %16, align 1, !dbg !19
+  %16 = ptrtoint ptr %4 to i64, !dbg !19
+  %17 = xor i64 %16, 87960930222080, !dbg !19
+  %18 = inttoptr i64 %17 to ptr, !dbg !19
+  store i32 0, ptr %18, align 1, !dbg !19
   store i32 8, ptr %4, align 4, !dbg !19
-    #dbg_declare(ptr %6, !20, !DIExpression(), !21)
-  %17 = ptrtoint ptr %3 to i64, !dbg !22
-  %18 = xor i64 %17, 87960930222080, !dbg !22
-  %19 = inttoptr i64 %18 to ptr, !dbg !22
-  %20 = load i32, ptr %19, align 1, !dbg !22
-  %21 = lshr i32 %20, 16, !dbg !22
-  %22 = or i32 %20, %21, !dbg !22
-  %23 = lshr i32 %22, 8, !dbg !22
-  %24 = or i32 %22, %23, !dbg !22
-  %25 = trunc i32 %24 to i8, !dbg !22
-  %26 = load i32, ptr %3, align 4, !dbg !22
-  store i8 %25, ptr %5, align 1, !dbg !21
-  store i32 %26, ptr %6, align 4, !dbg !21
-    #dbg_declare(ptr %8, !23, !DIExpression(), !24)
-  %27 = ptrtoint ptr %4 to i64, !dbg !25
-  %28 = xor i64 %27, 87960930222080, !dbg !25
-  %29 = inttoptr i64 %28 to ptr, !dbg !25
-  %30 = load i32, ptr %29, align 1, !dbg !25
-  %31 = lshr i32 %30, 16, !dbg !25
-  %32 = or i32 %30, %31, !dbg !25
-  %33 = lshr i32 %32, 8, !dbg !25
-  %34 = or i32 %32, %33, !dbg !25
-  %35 = trunc i32 %34 to i8, !dbg !25
-  %36 = load i32, ptr %4, align 4, !dbg !25
-  store i8 %35, ptr %7, align 1, !dbg !24
-  store i32 %36, ptr %8, align 4, !dbg !24
-    #dbg_declare(ptr %10, !26, !DIExpression(), !27)
-  store i8 0, ptr %9, align 1, !dbg !27
-  store i32 12, ptr %10, align 4, !dbg !27
-  call void @dfsan_set_label(i8 noundef zeroext 1, ptr noundef %3, i64 noundef 4), !dbg !28
-  call void @dfsan_set_label(i8 noundef zeroext 2, ptr noundef %4, i64 noundef 4), !dbg !29
-  %37 = load i8, ptr %5, align 1, !dbg !30
-  %38 = load i32, ptr %6, align 4, !dbg !30
-  %39 = load i8, ptr %7, align 1, !dbg !32
-  %40 = load i32, ptr %8, align 4, !dbg !32
-  %41 = or i8 %37, %39, !dbg !33
-  %42 = add nsw i32 %38, %40, !dbg !33
-  %43 = load i8, ptr %9, align 1, !dbg !34
-  %44 = load i32, ptr %10, align 4, !dbg !34
-  %45 = or i8 %41, %43, !dbg !35
-  %46 = add nsw i32 %42, %44, !dbg !35
-  %47 = icmp sgt i32 %46, 10, !dbg !36
-  call void @__dfsan_conditional_callback(i8 zeroext %45), !dbg !36
-  call void @__implicit_branch_callback(i8 %45, i32 23, i32 23, ptr @0, ptr %6, i64 4), !dbg !36
-  call void @__implicit_branch_callback(i8 %45, i32 23, i32 23, ptr @1, ptr %8, i64 4), !dbg !36
-  call void @__implicit_branch_callback(i8 %45, i32 23, i32 23, ptr @2, ptr %10, i64 4), !dbg !36
-  br i1 %47, label %48, label %49, !dbg !36
+  call void @dfsan_set_label(i8 noundef zeroext 1, ptr noundef %3, i64 noundef 4), !dbg !20
+  call void @dfsan_set_label(i8 noundef zeroext 2, ptr noundef %4, i64 noundef 4), !dbg !21
+    #dbg_declare(ptr %6, !22, !DIExpression(), !23)
+  %19 = ptrtoint ptr %3 to i64, !dbg !24
+  %20 = xor i64 %19, 87960930222080, !dbg !24
+  %21 = inttoptr i64 %20 to ptr, !dbg !24
+  %22 = load i32, ptr %21, align 1, !dbg !24
+  %23 = lshr i32 %22, 16, !dbg !24
+  %24 = or i32 %22, %23, !dbg !24
+  %25 = lshr i32 %24, 8, !dbg !24
+  %26 = or i32 %24, %25, !dbg !24
+  %27 = trunc i32 %26 to i8, !dbg !24
+  %28 = load i32, ptr %3, align 4, !dbg !24
+  store i8 %27, ptr %5, align 1, !dbg !23
+  store i32 %28, ptr %6, align 4, !dbg !23
+    #dbg_declare(ptr %8, !25, !DIExpression(), !26)
+  %29 = ptrtoint ptr %4 to i64, !dbg !27
+  %30 = xor i64 %29, 87960930222080, !dbg !27
+  %31 = inttoptr i64 %30 to ptr, !dbg !27
+  %32 = load i32, ptr %31, align 1, !dbg !27
+  %33 = lshr i32 %32, 16, !dbg !27
+  %34 = or i32 %32, %33, !dbg !27
+  %35 = lshr i32 %34, 8, !dbg !27
+  %36 = or i32 %34, %35, !dbg !27
+  %37 = trunc i32 %36 to i8, !dbg !27
+  %38 = load i32, ptr %4, align 4, !dbg !27
+  store i8 %37, ptr %7, align 1, !dbg !26
+  store i32 %38, ptr %8, align 4, !dbg !26
+    #dbg_declare(ptr %10, !28, !DIExpression(), !29)
+  store i8 0, ptr %9, align 1, !dbg !29
+  store i32 12, ptr %10, align 4, !dbg !29
+    #dbg_declare(ptr %12, !30, !DIExpression(), !32)
+  store i8 0, ptr %11, align 1, !dbg !32
+  store volatile i32 0, ptr %12, align 4, !dbg !32
+  %39 = load i8, ptr %5, align 1, !dbg !33
+  %40 = load i32, ptr %6, align 4, !dbg !33
+  %41 = load i8, ptr %7, align 1, !dbg !35
+  %42 = load i32, ptr %8, align 4, !dbg !35
+  %43 = or i8 %39, %41, !dbg !36
+  %44 = add nsw i32 %40, %42, !dbg !36
+  %45 = load i8, ptr %9, align 1, !dbg !37
+  %46 = load i32, ptr %10, align 4, !dbg !37
+  %47 = or i8 %43, %45, !dbg !38
+  %48 = add nsw i32 %44, %46, !dbg !38
+  %49 = icmp sgt i32 %48, 10, !dbg !39
+  call void @__dfsan_conditional_callback(i8 zeroext %47), !dbg !39
+  call void @__implicit_branch_callback(i8 %47, i32 24, i32 19, ptr @0, ptr %6, i64 4), !dbg !39
+  call void @__implicit_branch_callback(i8 %47, i32 24, i32 19, ptr @1, ptr %8, i64 4), !dbg !39
+  call void @__implicit_branch_callback(i8 %47, i32 24, i32 19, ptr @2, ptr %10, i64 4), !dbg !39
+  br i1 %49, label %50, label %51, !dbg !39
 
-48:                                               ; preds = %0
-  store i8 0, ptr %9, align 1, !dbg !37
-  store i32 1, ptr %10, align 4, !dbg !37
-  br label %49, !dbg !39
+50:                                               ; preds = %0
+  store i8 0, ptr %11, align 1, !dbg !40
+  store volatile i32 1, ptr %12, align 4, !dbg !40
+  br label %51, !dbg !42
 
-49:                                               ; preds = %48, %0
-  %50 = load i8, ptr %7, align 1, !dbg !40
-  %51 = load i32, ptr %8, align 4, !dbg !40
-  %52 = load i8, ptr %9, align 1, !dbg !42
-  %53 = load i32, ptr %10, align 4, !dbg !42
-  %54 = or i8 %50, %52, !dbg !43
-  %55 = add nsw i32 %51, %53, !dbg !43
-  %56 = icmp sgt i32 %55, 20, !dbg !44
-  call void @__dfsan_conditional_callback(i8 zeroext %54), !dbg !44
-  call void @__implicit_branch_callback(i8 %54, i32 27, i32 19, ptr @3, ptr %8, i64 4), !dbg !44
-  call void @__implicit_branch_callback(i8 %54, i32 27, i32 19, ptr @4, ptr %10, i64 4), !dbg !44
-  br i1 %56, label %57, label %58, !dbg !44
+51:                                               ; preds = %50, %0
+  %52 = load i8, ptr %7, align 1, !dbg !43
+  %53 = load i32, ptr %8, align 4, !dbg !43
+  %54 = load i8, ptr %9, align 1, !dbg !45
+  %55 = load i32, ptr %10, align 4, !dbg !45
+  %56 = or i8 %52, %54, !dbg !46
+  %57 = add nsw i32 %53, %55, !dbg !46
+  %58 = icmp sgt i32 %57, 20, !dbg !47
+  call void @__dfsan_conditional_callback(i8 zeroext %56), !dbg !47
+  call void @__implicit_branch_callback(i8 %56, i32 28, i32 15, ptr @3, ptr %8, i64 4), !dbg !47
+  call void @__implicit_branch_callback(i8 %56, i32 28, i32 15, ptr @4, ptr %10, i64 4), !dbg !47
+  br i1 %58, label %59, label %60, !dbg !47
 
-57:                                               ; preds = %49
-  store i8 0, ptr %9, align 1, !dbg !45
-  store i32 2, ptr %10, align 4, !dbg !45
-  br label %58, !dbg !47
+59:                                               ; preds = %51
+  store i8 0, ptr %11, align 1, !dbg !48
+  store volatile i32 2, ptr %12, align 4, !dbg !48
+  br label %60, !dbg !50
 
-58:                                               ; preds = %57, %49
-  %59 = load i8, ptr %9, align 1, !dbg !48
-  %60 = load i32, ptr %10, align 4, !dbg !48
-  %61 = icmp sgt i32 %60, 20, !dbg !50
-  call void @__dfsan_conditional_callback(i8 zeroext %59), !dbg !50
-  call void @__implicit_branch_callback(i8 %59, i32 31, i32 15, ptr @5, ptr %10, i64 4), !dbg !50
-  br i1 %61, label %62, label %63, !dbg !50
+60:                                               ; preds = %59, %51
+  %61 = load i8, ptr %9, align 1, !dbg !51
+  %62 = load i32, ptr %10, align 4, !dbg !51
+  %63 = icmp sgt i32 %62, 20, !dbg !53
+  call void @__dfsan_conditional_callback(i8 zeroext %61), !dbg !53
+  call void @__implicit_branch_callback(i8 %61, i32 32, i32 11, ptr @5, ptr %10, i64 4), !dbg !53
+  br i1 %63, label %64, label %65, !dbg !53
 
-62:                                               ; preds = %58
-  store i8 0, ptr %9, align 1, !dbg !51
-  store i32 3, ptr %10, align 4, !dbg !51
-  br label %63, !dbg !53
+64:                                               ; preds = %60
+  store i8 0, ptr %11, align 1, !dbg !54
+  store volatile i32 3, ptr %12, align 4, !dbg !54
+  br label %65, !dbg !56
 
-63:                                               ; preds = %62, %58
-  %64 = load i8, ptr %9, align 1, !dbg !54
-  %65 = load i32, ptr %10, align 4, !dbg !54
-  ret i32 %65, !dbg !55
+65:                                               ; preds = %64, %60
+  %66 = load i8, ptr %11, align 1, !dbg !57
+  %67 = load volatile i32, ptr %12, align 4, !dbg !57
+  ret i32 %67, !dbg !58
 }
 
 declare void @dfsan_set_label(i8 noundef zeroext, ptr noundef, i64 noundef) #1
@@ -200,7 +205,7 @@ attributes #2 = { nounwind memory(read) }
 !llvm.ident = !{!10}
 
 !0 = distinct !DICompileUnit(language: DW_LANG_C11, file: !1, producer: "Ubuntu clang version 21.1.8 (6ubuntu1)", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug, splitDebugInlining: false, nameTableKind: None)
-!1 = !DIFile(filename: "test.c", directory: "/home/anirban2005/dfsan/implicit_leaking", checksumkind: CSK_MD5, checksum: "472ceaca292b0233630553a0d62746d7")
+!1 = !DIFile(filename: "test.c", directory: "/home/anirban2005/dfsan/implicit_leaking", checksumkind: CSK_MD5, checksum: "398d7ca1467630a75132bdace960efb8")
 !2 = !{i32 7, !"Dwarf Version", i32 5}
 !3 = !{i32 2, !"Debug Info Version", i32 3}
 !4 = !{i32 1, !"wchar_size", i32 4}
@@ -219,39 +224,42 @@ attributes #2 = { nounwind memory(read) }
 !17 = !DILocation(line: 5, column: 9, scope: !11)
 !18 = !DILocalVariable(name: "secret2", scope: !11, file: !1, line: 6, type: !14)
 !19 = !DILocation(line: 6, column: 9, scope: !11)
-!20 = !DILocalVariable(name: "x", scope: !11, file: !1, line: 8, type: !14)
-!21 = !DILocation(line: 8, column: 9, scope: !11)
-!22 = !DILocation(line: 8, column: 13, scope: !11)
-!23 = !DILocalVariable(name: "y", scope: !11, file: !1, line: 9, type: !14)
-!24 = !DILocation(line: 9, column: 9, scope: !11)
-!25 = !DILocation(line: 9, column: 13, scope: !11)
-!26 = !DILocalVariable(name: "clean", scope: !11, file: !1, line: 11, type: !14)
-!27 = !DILocation(line: 11, column: 9, scope: !11)
-!28 = !DILocation(line: 13, column: 5, scope: !11)
-!29 = !DILocation(line: 18, column: 5, scope: !11)
-!30 = !DILocation(line: 23, column: 9, scope: !31)
-!31 = distinct !DILexicalBlock(scope: !11, file: !1, line: 23, column: 9)
-!32 = !DILocation(line: 23, column: 13, scope: !31)
-!33 = !DILocation(line: 23, column: 11, scope: !31)
-!34 = !DILocation(line: 23, column: 17, scope: !31)
-!35 = !DILocation(line: 23, column: 15, scope: !31)
-!36 = !DILocation(line: 23, column: 23, scope: !31)
-!37 = !DILocation(line: 24, column: 15, scope: !38)
-!38 = distinct !DILexicalBlock(scope: !31, file: !1, line: 23, column: 29)
-!39 = !DILocation(line: 25, column: 5, scope: !38)
-!40 = !DILocation(line: 27, column: 9, scope: !41)
-!41 = distinct !DILexicalBlock(scope: !11, file: !1, line: 27, column: 9)
-!42 = !DILocation(line: 27, column: 13, scope: !41)
-!43 = !DILocation(line: 27, column: 11, scope: !41)
-!44 = !DILocation(line: 27, column: 19, scope: !41)
-!45 = !DILocation(line: 28, column: 15, scope: !46)
-!46 = distinct !DILexicalBlock(scope: !41, file: !1, line: 27, column: 25)
-!47 = !DILocation(line: 29, column: 5, scope: !46)
-!48 = !DILocation(line: 31, column: 9, scope: !49)
-!49 = distinct !DILexicalBlock(scope: !11, file: !1, line: 31, column: 9)
-!50 = !DILocation(line: 31, column: 15, scope: !49)
-!51 = !DILocation(line: 32, column: 15, scope: !52)
-!52 = distinct !DILexicalBlock(scope: !49, file: !1, line: 31, column: 21)
-!53 = !DILocation(line: 33, column: 5, scope: !52)
-!54 = !DILocation(line: 35, column: 12, scope: !11)
-!55 = !DILocation(line: 35, column: 5, scope: !11)
+!20 = !DILocation(line: 8, column: 5, scope: !11)
+!21 = !DILocation(line: 13, column: 5, scope: !11)
+!22 = !DILocalVariable(name: "x", scope: !11, file: !1, line: 18, type: !14)
+!23 = !DILocation(line: 18, column: 9, scope: !11)
+!24 = !DILocation(line: 18, column: 13, scope: !11)
+!25 = !DILocalVariable(name: "y", scope: !11, file: !1, line: 19, type: !14)
+!26 = !DILocation(line: 19, column: 9, scope: !11)
+!27 = !DILocation(line: 19, column: 13, scope: !11)
+!28 = !DILocalVariable(name: "z", scope: !11, file: !1, line: 20, type: !14)
+!29 = !DILocation(line: 20, column: 9, scope: !11)
+!30 = !DILocalVariable(name: "sink", scope: !11, file: !1, line: 22, type: !31)
+!31 = !DIDerivedType(tag: DW_TAG_volatile_type, baseType: !14)
+!32 = !DILocation(line: 22, column: 18, scope: !11)
+!33 = !DILocation(line: 24, column: 9, scope: !34)
+!34 = distinct !DILexicalBlock(scope: !11, file: !1, line: 24, column: 9)
+!35 = !DILocation(line: 24, column: 13, scope: !34)
+!36 = !DILocation(line: 24, column: 11, scope: !34)
+!37 = !DILocation(line: 24, column: 17, scope: !34)
+!38 = !DILocation(line: 24, column: 15, scope: !34)
+!39 = !DILocation(line: 24, column: 19, scope: !34)
+!40 = !DILocation(line: 25, column: 14, scope: !41)
+!41 = distinct !DILexicalBlock(scope: !34, file: !1, line: 24, column: 25)
+!42 = !DILocation(line: 26, column: 5, scope: !41)
+!43 = !DILocation(line: 28, column: 9, scope: !44)
+!44 = distinct !DILexicalBlock(scope: !11, file: !1, line: 28, column: 9)
+!45 = !DILocation(line: 28, column: 13, scope: !44)
+!46 = !DILocation(line: 28, column: 11, scope: !44)
+!47 = !DILocation(line: 28, column: 15, scope: !44)
+!48 = !DILocation(line: 29, column: 14, scope: !49)
+!49 = distinct !DILexicalBlock(scope: !44, file: !1, line: 28, column: 21)
+!50 = !DILocation(line: 30, column: 5, scope: !49)
+!51 = !DILocation(line: 32, column: 9, scope: !52)
+!52 = distinct !DILexicalBlock(scope: !11, file: !1, line: 32, column: 9)
+!53 = !DILocation(line: 32, column: 11, scope: !52)
+!54 = !DILocation(line: 33, column: 14, scope: !55)
+!55 = distinct !DILexicalBlock(scope: !52, file: !1, line: 32, column: 17)
+!56 = !DILocation(line: 34, column: 5, scope: !55)
+!57 = !DILocation(line: 36, column: 12, scope: !11)
+!58 = !DILocation(line: 36, column: 5, scope: !11)

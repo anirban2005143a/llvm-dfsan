@@ -10,18 +10,21 @@ void __implicit_branch_callback(
     uint32_t column,
     const char *variable,
     const void *address,
-    size_t size)
+    uint64_t size)
 {
     if (condition_label == 0)
         return;
 
-    if (variable == NULL ||
-        address == NULL ||
-        size == 0)
+    if (variable == NULL)
+        return;
+
+    if (address == NULL || size == 0)
         return;
 
     dfsan_label variable_label =
-        dfsan_read_label(address, size);
+        dfsan_read_label(
+            address,
+            (size_t)size);
 
     if (variable_label == 0)
         return;

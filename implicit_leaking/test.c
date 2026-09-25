@@ -5,11 +5,6 @@ int main(void)
     int secret1 = 5;
     int secret2 = 8;
 
-    int x = secret1;
-    int y = secret2;
-
-    int clean = 12;
-
     dfsan_set_label(
         1,
         &secret1,
@@ -20,17 +15,23 @@ int main(void)
         &secret2,
         sizeof(secret2));
 
-    if (x + y + clean > 10) {
-        clean = 1;
+    int x = secret1;
+    int y = secret2;
+    int z = 12;
+
+    volatile int sink = 0;
+
+    if (x + y + z > 10) {
+        sink = 1;
     }
 
-    if (y + clean > 20) {
-        clean = 2;
+    if (y + z > 20) {
+        sink = 2;
     }
 
-    if (clean > 20) {
-        clean = 3;
+    if (z > 20) {
+        sink = 3;
     }
 
-    return clean;
+    return sink;
 }
