@@ -1,4 +1,4 @@
-; ModuleID = 'test.ll'
+; ModuleID = 'instrumented.bc'
 source_filename = "test.c"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-pc-linux-gnu"
@@ -11,12 +11,12 @@ target triple = "x86_64-pc-linux-gnu"
 @__dfsan_arg_origin_tls = external thread_local(initialexec) global [200 x i32]
 @__dfsan_retval_origin_tls = external thread_local(initialexec) global i32
 @__dfsan_track_origins = weak_odr constant i32 0
-@__implicit_variable_x = private unnamed_addr constant [2 x i8] c"x\00", align 1
-@__implicit_variable_y = private unnamed_addr constant [2 x i8] c"y\00", align 1
-@__implicit_variable_z = private unnamed_addr constant [2 x i8] c"z\00", align 1
-@__implicit_variable_y.1 = private unnamed_addr constant [2 x i8] c"y\00", align 1
-@__implicit_variable_z.2 = private unnamed_addr constant [2 x i8] c"z\00", align 1
-@__implicit_variable_z.3 = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@__implicit_var_x = private unnamed_addr constant [2 x i8] c"x\00", align 1
+@__implicit_var_y = private unnamed_addr constant [2 x i8] c"y\00", align 1
+@__implicit_var_z = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@__implicit_var_y.1 = private unnamed_addr constant [2 x i8] c"y\00", align 1
+@__implicit_var_z.2 = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@__implicit_var_z.3 = private unnamed_addr constant [2 x i8] c"z\00", align 1
 
 ; Function Attrs: noinline nounwind optnone uwtable
 define dso_local i32 @main.dfsan() #0 !dbg !25 {
@@ -92,10 +92,9 @@ define dso_local i32 @main.dfsan() #0 !dbg !25 {
   %45 = or i8 %41, %43, !dbg !49
   %46 = add nsw i32 %42, %44, !dbg !49
   %47 = icmp sgt i32 %46, 10, !dbg !50
-  call void @__implicit_branch_callback(i8 %45, i32 16, i32 19, ptr @__implicit_variable_x, ptr %6, i64 4), !dbg !50
-  call void @__implicit_branch_callback(i8 %45, i32 16, i32 19, ptr @__implicit_variable_y, ptr %8, i64 4), !dbg !50
-  call void @__implicit_branch_callback(i8 %45, i32 16, i32 19, ptr @__implicit_variable_z, ptr %10, i64 4), !dbg !50
-  call void @__dfsan_conditional_callback(i8 zeroext %45), !dbg !50
+  call void @__implicit_branch_callback(i8 %45, i32 25, i32 19, ptr @__implicit_var_x, ptr %6, i64 4), !dbg !50
+  call void @__implicit_branch_callback(i8 %45, i32 25, i32 19, ptr @__implicit_var_y, ptr %8, i64 4), !dbg !50
+  call void @__implicit_branch_callback(i8 %45, i32 25, i32 19, ptr @__implicit_var_z, ptr %10, i64 4), !dbg !50
   br i1 %47, label %48, label %50, !dbg !50
 
 48:                                               ; preds = %0
@@ -112,9 +111,8 @@ define dso_local i32 @main.dfsan() #0 !dbg !25 {
   %55 = or i8 %51, %53, !dbg !57
   %56 = add nsw i32 %52, %54, !dbg !57
   %57 = icmp sgt i32 %56, 20, !dbg !58
-  call void @__implicit_branch_callback(i8 %55, i32 20, i32 15, ptr @__implicit_variable_y.1, ptr %8, i64 4), !dbg !58
-  call void @__implicit_branch_callback(i8 %55, i32 20, i32 15, ptr @__implicit_variable_z.2, ptr %10, i64 4), !dbg !58
-  call void @__dfsan_conditional_callback(i8 zeroext %55), !dbg !58
+  call void @__implicit_branch_callback(i8 %55, i32 29, i32 15, ptr @__implicit_var_y.1, ptr %8, i64 4), !dbg !58
+  call void @__implicit_branch_callback(i8 %55, i32 29, i32 15, ptr @__implicit_var_z.2, ptr %10, i64 4), !dbg !58
   br i1 %57, label %58, label %60, !dbg !58
 
 58:                                               ; preds = %50
@@ -127,8 +125,7 @@ define dso_local i32 @main.dfsan() #0 !dbg !25 {
   %61 = load i8, ptr %9, align 1, !dbg !62
   %62 = load i32, ptr %10, align 4, !dbg !62
   %63 = icmp sgt i32 %62, 20, !dbg !64
-  call void @__implicit_branch_callback(i8 %61, i32 24, i32 11, ptr @__implicit_variable_z.3, ptr %10, i64 4), !dbg !64
-  call void @__dfsan_conditional_callback(i8 zeroext %61), !dbg !64
+  call void @__implicit_branch_callback(i8 %61, i32 33, i32 11, ptr @__implicit_var_z.3, ptr %10, i64 4), !dbg !64
   br i1 %63, label %64, label %66, !dbg !64
 
 64:                                               ; preds = %60
@@ -201,16 +198,16 @@ attributes #2 = { nounwind memory(read) }
 !llvm.ident = !{!24}
 
 !0 = !DIGlobalVariableExpression(var: !1, expr: !DIExpression())
-!1 = distinct !DIGlobalVariable(scope: null, file: !2, line: 17, type: !3, isLocal: true, isDefinition: true)
-!2 = !DIFile(filename: "test.c", directory: "/home/anirban2005/dfsan/implicit_leaking", checksumkind: CSK_MD5, checksum: "3990ba2dd0e0d4365faf5c70c4102ecf")
+!1 = distinct !DIGlobalVariable(scope: null, file: !2, line: 26, type: !3, isLocal: true, isDefinition: true)
+!2 = !DIFile(filename: "test.c", directory: "/home/anirban2005/dfsan/implicit_leaking", checksumkind: CSK_MD5, checksum: "f6e156e8f94bb0823c4d71da888001cd")
 !3 = !DICompositeType(tag: DW_TAG_array_type, baseType: !4, size: 152, elements: !5)
 !4 = !DIBasicType(name: "char", size: 8, encoding: DW_ATE_signed_char)
 !5 = !{!6}
 !6 = !DISubrange(count: 19)
 !7 = !DIGlobalVariableExpression(var: !8, expr: !DIExpression())
-!8 = distinct !DIGlobalVariable(scope: null, file: !2, line: 21, type: !3, isLocal: true, isDefinition: true)
+!8 = distinct !DIGlobalVariable(scope: null, file: !2, line: 30, type: !3, isLocal: true, isDefinition: true)
 !9 = !DIGlobalVariableExpression(var: !10, expr: !DIExpression())
-!10 = distinct !DIGlobalVariable(scope: null, file: !2, line: 25, type: !11, isLocal: true, isDefinition: true)
+!10 = distinct !DIGlobalVariable(scope: null, file: !2, line: 34, type: !11, isLocal: true, isDefinition: true)
 !11 = !DICompositeType(tag: DW_TAG_array_type, baseType: !4, size: 96, elements: !12)
 !12 = !{!13}
 !13 = !DISubrange(count: 12)
@@ -225,47 +222,47 @@ attributes #2 = { nounwind memory(read) }
 !22 = !{i32 7, !"frame-pointer", i32 2}
 !23 = !{i32 4, !"nosanitize_dataflow", i32 1}
 !24 = !{!"Ubuntu clang version 21.1.8 (6ubuntu1)"}
-!25 = distinct !DISubprogram(name: "main", scope: !2, file: !2, line: 4, type: !26, scopeLine: 5, spFlags: DISPFlagDefinition, unit: !14, retainedNodes: !29)
+!25 = distinct !DISubprogram(name: "main", scope: !2, file: !2, line: 6, type: !26, scopeLine: 7, spFlags: DISPFlagDefinition, unit: !14, retainedNodes: !29)
 !26 = !DISubroutineType(types: !27)
 !27 = !{!28}
 !28 = !DIBasicType(name: "int", size: 32, encoding: DW_ATE_signed)
 !29 = !{}
-!30 = !DILocalVariable(name: "secret1", scope: !25, file: !2, line: 6, type: !28)
-!31 = !DILocation(line: 6, column: 9, scope: !25)
-!32 = !DILocalVariable(name: "secret2", scope: !25, file: !2, line: 7, type: !28)
-!33 = !DILocation(line: 7, column: 9, scope: !25)
-!34 = !DILocation(line: 9, column: 5, scope: !25)
-!35 = !DILocation(line: 10, column: 5, scope: !25)
-!36 = !DILocalVariable(name: "x", scope: !25, file: !2, line: 12, type: !28)
-!37 = !DILocation(line: 12, column: 9, scope: !25)
-!38 = !DILocation(line: 12, column: 13, scope: !25)
-!39 = !DILocalVariable(name: "y", scope: !25, file: !2, line: 13, type: !28)
-!40 = !DILocation(line: 13, column: 9, scope: !25)
-!41 = !DILocation(line: 13, column: 13, scope: !25)
-!42 = !DILocalVariable(name: "z", scope: !25, file: !2, line: 14, type: !28)
-!43 = !DILocation(line: 14, column: 9, scope: !25)
-!44 = !DILocation(line: 16, column: 9, scope: !45)
-!45 = distinct !DILexicalBlock(scope: !25, file: !2, line: 16, column: 9)
-!46 = !DILocation(line: 16, column: 13, scope: !45)
-!47 = !DILocation(line: 16, column: 11, scope: !45)
-!48 = !DILocation(line: 16, column: 17, scope: !45)
-!49 = !DILocation(line: 16, column: 15, scope: !45)
-!50 = !DILocation(line: 16, column: 19, scope: !45)
-!51 = !DILocation(line: 17, column: 9, scope: !52)
-!52 = distinct !DILexicalBlock(scope: !45, file: !2, line: 16, column: 25)
-!53 = !DILocation(line: 18, column: 5, scope: !52)
-!54 = !DILocation(line: 20, column: 9, scope: !55)
-!55 = distinct !DILexicalBlock(scope: !25, file: !2, line: 20, column: 9)
-!56 = !DILocation(line: 20, column: 13, scope: !55)
-!57 = !DILocation(line: 20, column: 11, scope: !55)
-!58 = !DILocation(line: 20, column: 15, scope: !55)
-!59 = !DILocation(line: 21, column: 9, scope: !60)
-!60 = distinct !DILexicalBlock(scope: !55, file: !2, line: 20, column: 21)
-!61 = !DILocation(line: 22, column: 5, scope: !60)
-!62 = !DILocation(line: 24, column: 9, scope: !63)
-!63 = distinct !DILexicalBlock(scope: !25, file: !2, line: 24, column: 9)
-!64 = !DILocation(line: 24, column: 11, scope: !63)
-!65 = !DILocation(line: 25, column: 9, scope: !66)
-!66 = distinct !DILexicalBlock(scope: !63, file: !2, line: 24, column: 17)
-!67 = !DILocation(line: 26, column: 5, scope: !66)
-!68 = !DILocation(line: 28, column: 5, scope: !25)
+!30 = !DILocalVariable(name: "secret1", scope: !25, file: !2, line: 8, type: !28)
+!31 = !DILocation(line: 8, column: 9, scope: !25)
+!32 = !DILocalVariable(name: "secret2", scope: !25, file: !2, line: 9, type: !28)
+!33 = !DILocation(line: 9, column: 9, scope: !25)
+!34 = !DILocation(line: 11, column: 5, scope: !25)
+!35 = !DILocation(line: 16, column: 5, scope: !25)
+!36 = !DILocalVariable(name: "x", scope: !25, file: !2, line: 21, type: !28)
+!37 = !DILocation(line: 21, column: 9, scope: !25)
+!38 = !DILocation(line: 21, column: 13, scope: !25)
+!39 = !DILocalVariable(name: "y", scope: !25, file: !2, line: 22, type: !28)
+!40 = !DILocation(line: 22, column: 9, scope: !25)
+!41 = !DILocation(line: 22, column: 13, scope: !25)
+!42 = !DILocalVariable(name: "z", scope: !25, file: !2, line: 23, type: !28)
+!43 = !DILocation(line: 23, column: 9, scope: !25)
+!44 = !DILocation(line: 25, column: 9, scope: !45)
+!45 = distinct !DILexicalBlock(scope: !25, file: !2, line: 25, column: 9)
+!46 = !DILocation(line: 25, column: 13, scope: !45)
+!47 = !DILocation(line: 25, column: 11, scope: !45)
+!48 = !DILocation(line: 25, column: 17, scope: !45)
+!49 = !DILocation(line: 25, column: 15, scope: !45)
+!50 = !DILocation(line: 25, column: 19, scope: !45)
+!51 = !DILocation(line: 26, column: 9, scope: !52)
+!52 = distinct !DILexicalBlock(scope: !45, file: !2, line: 25, column: 25)
+!53 = !DILocation(line: 27, column: 5, scope: !52)
+!54 = !DILocation(line: 29, column: 9, scope: !55)
+!55 = distinct !DILexicalBlock(scope: !25, file: !2, line: 29, column: 9)
+!56 = !DILocation(line: 29, column: 13, scope: !55)
+!57 = !DILocation(line: 29, column: 11, scope: !55)
+!58 = !DILocation(line: 29, column: 15, scope: !55)
+!59 = !DILocation(line: 30, column: 9, scope: !60)
+!60 = distinct !DILexicalBlock(scope: !55, file: !2, line: 29, column: 21)
+!61 = !DILocation(line: 31, column: 5, scope: !60)
+!62 = !DILocation(line: 33, column: 9, scope: !63)
+!63 = distinct !DILexicalBlock(scope: !25, file: !2, line: 33, column: 9)
+!64 = !DILocation(line: 33, column: 11, scope: !63)
+!65 = !DILocation(line: 34, column: 9, scope: !66)
+!66 = distinct !DILexicalBlock(scope: !63, file: !2, line: 33, column: 17)
+!67 = !DILocation(line: 35, column: 5, scope: !66)
+!68 = !DILocation(line: 37, column: 5, scope: !25)
