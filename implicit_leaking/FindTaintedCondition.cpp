@@ -1,9 +1,9 @@
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/DebugInfoMetadata.h"
-#include "llvm/IR/DebugProgramInstruction.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
@@ -13,7 +13,6 @@
 
 #include <set>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 using namespace llvm;
@@ -21,18 +20,95 @@ using namespace llvm;
 namespace {
 
 struct VariableInfo {
-    std::unordered_map<const AllocaInst *, std::string> AllocaNames;
-    std::unordered_map<const Value *, std::string> DebugValueNames;
+    std::string Name;
+    Value *Address;
+    uint64_t Size;
 };
 
-static void buildVariableInfo(
+static void addUniqueVariable(
+    std::vector<VariableInfo> &Variables,
+    const std::string &Name,
+    Value *Address,
+    uint64_t Size) {
+
+    if (Name.empty() || !Address || Size == 0)
+        return;
+
+    for (const auto &V : Variables) {
+        if (V.Name == Name && V.Address == Address)
+            return;
+    }
+
+    Variables.push_back({Name, Address, Size});
+}
+
+static Value *getMemoryAddress(Value *V) {
+    if (!V)
+        return nullptr;
+
+    V = V->stripPointerCasts();
+
+    if (isa<AllocaInst>(V))
+        return V;
+
+    if (isa<GlobalVariable>(V))
+        return V;
+
+    if (auto *GEP = dyn_cast<GetElementPtrInst>(V)) {
+        Value *Base =
+            GEP->getPointerOperand()->stripPointerCasts();
+
+        if (isa<AllocaInst>(Base) ||
+            isa<GlobalVariable>(Base))
+            return Base;
+    }
+
+    return nullptr;
+}
+
+static uint64_t getMemorySize(
+    Module &M,
+    Value *Address) {
+
+    if (auto *AI = dyn_cast<AllocaInst>(Address)) {
+        TypeSize Size =
+            M.getDataLayout().getTypeStoreSize(
+                AI->getAllocatedType());
+
+        if (Size.isScalable())
+            return 0;
+
+        return Size.getFixedValue();
+    }
+
+    if (auto *GV = dyn_cast<GlobalVariable>(Address)) {
+        TypeSize Size =
+            M.getDataLayout().getTypeStoreSize(
+                GV->getValueType());
+
+        if (Size.isScalable())
+            return 0;
+
+        return Size.getFixedValue();
+    }
+
+    return 0;
+}
+
+static std::string getDbgName(
     Function &F,
-    VariableInfo &Info) {
+    Value *V) {
 
-    for (Instruction &I : instructions(F)) {
+    if (!V)
+        return "";
 
-        // LLVM 21 new debug-info records.
-        if (I.hasDbgRecords()) {
+    V = V->stripPointerCasts();
+
+    for (BasicBlock &BB : F) {
+        for (Instruction &I : BB) {
+
+            if (!I.hasDbgRecords())
+                continue;
 
             for (DbgRecord &DR :
                  I.getDbgRecordRange()) {
@@ -49,314 +125,188 @@ static void buildVariableInfo(
                 if (!Var)
                     continue;
 
-                std::string Name =
-                    Var->getName().str();
-
                 for (unsigned Op = 0;
                      Op < DVR->getNumVariableLocationOps();
                      ++Op) {
 
-                    Value *V =
+                    Value *Loc =
                         DVR->getVariableLocationOp(Op);
 
-                    if (!V)
-                        continue;
+                    Loc = Loc->stripPointerCasts();
 
-                    Info.DebugValueNames[V] =
-                        Name;
-
-                    Value *Base =
-                        V->stripPointerCasts();
-
-                    if (auto *AI =
-                            dyn_cast<AllocaInst>(Base)) {
-
-                        Info.AllocaNames[AI] =
-                            Name;
-                    }
+                    if (Loc == V)
+                        return Var->getName().str();
                 }
             }
         }
-
-        // Old dbg.declare.
-        if (auto *DDI =
-                dyn_cast<DbgDeclareInst>(&I)) {
-
-            DILocalVariable *Var =
-                DDI->getVariable();
-
-            Value *Addr =
-                DDI->getAddress();
-
-            if (Var && Addr) {
-
-                std::string Name =
-                    Var->getName().str();
-
-                Value *Base =
-                    Addr->stripPointerCasts();
-
-                if (auto *AI =
-                        dyn_cast<AllocaInst>(Base)) {
-
-                    Info.AllocaNames[AI] =
-                        Name;
-                }
-            }
-        }
-
-        // Old dbg.value.
-        if (auto *DVI =
-                dyn_cast<DbgValueInst>(&I)) {
-
-            DILocalVariable *Var =
-                DVI->getVariable();
-
-            Value *V =
-                DVI->getValue();
-
-            if (Var && V) {
-
-                Info.DebugValueNames[V] =
-                    Var->getName().str();
-            }
-        }
-    }
-}
-
-static void addUnique(
-    std::vector<std::string> &Vars,
-    const std::string &Name) {
-
-    if (Name.empty())
-        return;
-
-    for (const std::string &V : Vars) {
-        if (V == Name)
-            return;
     }
 
-    Vars.push_back(Name);
+    for (Instruction &I : instructions(F)) {
+
+        auto *DVI =
+            dyn_cast<DbgVariableIntrinsic>(&I);
+
+        if (!DVI)
+            continue;
+
+        DILocalVariable *Var =
+            DVI->getVariable();
+
+        if (!Var)
+            continue;
+
+        for (unsigned Op = 0;
+             Op < DVI->getNumVariableLocationOps();
+             ++Op) {
+
+            Value *Loc =
+                DVI->getVariableLocationOp(Op);
+
+            Loc = Loc->stripPointerCasts();
+
+            if (Loc == V)
+                return Var->getName().str();
+        }
+    }
+
+    return "";
 }
 
 static void collectVariables(
+    Function &F,
+    Module &M,
     Value *V,
-    const VariableInfo &Info,
-    std::vector<std::string> &Vars,
-    std::set<const Value *> &Visited) {
+    std::vector<VariableInfo> &Variables,
+    std::set<Value *> &Visited) {
 
     if (!V)
         return;
 
+    V = V->stripPointerCasts();
+
     if (!Visited.insert(V).second)
         return;
 
-    // Direct debug-value mapping.
-    auto DbgIt =
-        Info.DebugValueNames.find(V);
+    if (auto *LI = dyn_cast<LoadInst>(V)) {
 
-    if (DbgIt != Info.DebugValueNames.end())
-        addUnique(Vars, DbgIt->second);
+        Value *Address =
+            getMemoryAddress(
+                LI->getPointerOperand());
 
-    /*
-     * load -> alloca -> source variable
-     */
-    if (auto *LI =
-            dyn_cast<LoadInst>(V)) {
+        if (Address) {
 
-        Value *Ptr =
-            LI->getPointerOperand()
-               ->stripPointerCasts();
+            std::string Name =
+                getDbgName(F, Address);
 
-        if (auto *AI =
-                dyn_cast<AllocaInst>(Ptr)) {
+            uint64_t Size =
+                getMemorySize(M, Address);
 
-            auto It =
-                Info.AllocaNames.find(AI);
-
-            if (It != Info.AllocaNames.end()) {
-
-                addUnique(
-                    Vars,
-                    It->second);
-
-                return;
+            if (!Name.empty() && Size != 0) {
+                addUniqueVariable(
+                    Variables,
+                    Name,
+                    Address,
+                    Size);
             }
-
-            // Sometimes LLVM attaches the debug name
-            // directly to the load rather than the alloca.
-            auto LoadDbg =
-                Info.DebugValueNames.find(LI);
-
-            if (LoadDbg !=
-                Info.DebugValueNames.end()) {
-
-                addUnique(
-                    Vars,
-                    LoadDbg->second);
-
-                return;
-            }
-        }
-    }
-
-    // alloca -> source variable
-    if (auto *AI =
-            dyn_cast<AllocaInst>(V)) {
-
-        auto It =
-            Info.AllocaNames.find(AI);
-
-        if (It != Info.AllocaNames.end()) {
-
-            addUnique(
-                Vars,
-                It->second);
 
             return;
         }
     }
 
-    /*
-     * Recursively walk the complete data-flow:
-     *
-     * icmp
-     *   -> add
-     *      -> load x
-     *      -> load y
-     *      -> load z
-     */
-    if (auto *I =
-            dyn_cast<Instruction>(V)) {
+    std::string DirectName =
+        getDbgName(F, V);
 
-        for (Value *Op :
-             I->operands()) {
+    if (!DirectName.empty()) {
+
+        Value *Address = nullptr;
+
+        for (BasicBlock &BB : F) {
+            for (Instruction &I : BB) {
+
+                if (auto *AI =
+                        dyn_cast<AllocaInst>(&I)) {
+
+                    std::string Name =
+                        getDbgName(F, AI);
+
+                    if (Name == DirectName) {
+                        Address = AI;
+                        break;
+                    }
+                }
+            }
+
+            if (Address)
+                break;
+        }
+
+        if (Address) {
+            uint64_t Size =
+                getMemorySize(M, Address);
+
+            if (Size != 0) {
+                addUniqueVariable(
+                    Variables,
+                    DirectName,
+                    Address,
+                    Size);
+            }
+        }
+    }
+
+    if (auto *PN = dyn_cast<PHINode>(V)) {
+
+        for (Value *Incoming :
+             PN->incoming_values()) {
+
+            collectVariables(
+                F,
+                M,
+                Incoming,
+                Variables,
+                Visited);
+        }
+
+        return;
+    }
+
+    if (auto *I = dyn_cast<Instruction>(V)) {
+
+        for (Value *Op : I->operands()) {
 
             if (isa<Constant>(Op))
                 continue;
 
             collectVariables(
+                F,
+                M,
                 Op,
-                Info,
-                Vars,
+                Variables,
                 Visited);
         }
     }
 }
 
-static AllocaInst *findVariableAddress(
-    Value *V,
-    const VariableInfo &Info,
-    const std::string &Target,
-    std::set<const Value *> &Visited) {
+static bool isConditionalCallback(
+    CallInst *CI) {
 
-    if (!V)
-        return nullptr;
+    if (!CI)
+        return false;
 
-    if (!Visited.insert(V).second)
-        return nullptr;
+    Value *Called =
+        CI->getCalledOperand()
+            ->stripPointerCasts();
 
-    /*
-     * load -> alloca
-     */
-    if (auto *LI =
-            dyn_cast<LoadInst>(V)) {
+    auto *F =
+        dyn_cast<Function>(Called);
 
-        Value *Ptr =
-            LI->getPointerOperand()
-               ->stripPointerCasts();
+    if (!F)
+        return false;
 
-        if (auto *AI =
-                dyn_cast<AllocaInst>(Ptr)) {
-
-            auto It =
-                Info.AllocaNames.find(AI);
-
-            if (It != Info.AllocaNames.end() &&
-                It->second == Target) {
-
-                return AI;
-            }
-        }
-    }
-
-    /*
-     * alloca
-     */
-    if (auto *AI =
-            dyn_cast<AllocaInst>(V)) {
-
-        auto It =
-            Info.AllocaNames.find(AI);
-
-        if (It != Info.AllocaNames.end() &&
-            It->second == Target) {
-
-            return AI;
-        }
-    }
-
-    if (auto *I =
-            dyn_cast<Instruction>(V)) {
-
-        for (Value *Op :
-             I->operands()) {
-
-            if (isa<Constant>(Op))
-                continue;
-
-            if (AllocaInst *AI =
-                    findVariableAddress(
-                        Op,
-                        Info,
-                        Target,
-                        Visited)) {
-
-                return AI;
-            }
-        }
-    }
-
-    return nullptr;
-}
-
-static CallInst *
-findDFSanConditionalCallback(
-    BranchInst *BR) {
-
-    Instruction *Cur =
-        BR->getPrevNode();
-
-    for (unsigned I = 0;
-         Cur && I < 16;
-         ++I) {
-
-        if (auto *CI =
-                dyn_cast<CallInst>(Cur)) {
-
-            Function *Callee =
-                CI->getCalledFunction();
-
-            if (!Callee)
-                continue;
-
-            StringRef Name =
-                Callee->getName();
-
-            if (Name ==
-                    "__dfsan_conditional_callback" ||
-                Name ==
-                    "__dfsan_conditional_callback_origin") {
-
-                return CI;
-            }
-        }
-
-        Cur =
-            Cur->getPrevNode();
-    }
-
-    return nullptr;
+    return F->getName() ==
+               "__dfsan_conditional_callback" ||
+           F->getName() ==
+               "__dfsan_conditional_callback_origin";
 }
 
 class ImplicitTaintPass
@@ -380,22 +330,13 @@ public:
         Type *I32Ty =
             Type::getInt32Ty(Ctx);
 
-        Type *I64Ty =
-            Type::getInt64Ty(Ctx);
+        Type *IntPtrTy =
+            M.getDataLayout()
+                .getIntPtrType(Ctx);
 
         PointerType *PtrTy =
             PointerType::get(Ctx, 0);
 
-        /*
-         * void __implicit_branch_callback(
-         *     dfsan_label,
-         *     line,
-         *     column,
-         *     variable_name,
-         *     variable_address,
-         *     variable_size
-         * );
-         */
         FunctionType *CallbackTy =
             FunctionType::get(
                 VoidTy,
@@ -405,11 +346,11 @@ public:
                     I32Ty,
                     PtrTy,
                     PtrTy,
-                    I64Ty
+                    IntPtrTy
                 },
                 false);
 
-        FunctionCallee RuntimeCallback =
+        FunctionCallee Callback =
             M.getOrInsertFunction(
                 "__implicit_branch_callback",
                 CallbackTy);
@@ -421,170 +362,110 @@ public:
             if (F.isDeclaration())
                 continue;
 
-            VariableInfo Info;
-
-            buildVariableInfo(
-                F,
-                Info);
+            std::vector<CallInst *>
+                ConditionalCallbacks;
 
             for (BasicBlock &BB : F) {
 
                 for (Instruction &I : BB) {
 
-                    auto *BR =
-                        dyn_cast<BranchInst>(&I);
+                    auto *CI =
+                        dyn_cast<CallInst>(&I);
 
-                    if (!BR ||
-                        !BR->isConditional())
-                        continue;
-
-                    CallInst *DFCall =
-                        findDFSanConditionalCallback(
-                            BR);
-
-                    if (!DFCall)
-                        continue;
-
-                    /*
-                     * DFSan passes the condition label
-                     * as argument 0.
-                     */
-                    Value *Label =
-                        DFCall->getArgOperand(0);
-
-                    if (Label->getType() != I8Ty) {
-
-                        IRBuilder<> CastBuilder(
-                            DFCall);
-
-                        Label =
-                            CastBuilder.CreateIntCast(
-                                Label,
-                                I8Ty,
-                                false);
-                    }
-
-                    Value *Condition =
-                        BR->getCondition();
-
-                    unsigned Line = 0;
-                    unsigned Column = 0;
-
-                    DebugLoc DL =
-                        BR->getDebugLoc();
-
-                    if (DL) {
-
-                        Line =
-                            DL.getLine();
-
-                        Column =
-                            DL.getCol();
-
-                    } else if (
-                        auto *CondI =
-                            dyn_cast<Instruction>(
-                                Condition)) {
-
-                        DebugLoc CondDL =
-                            CondI->getDebugLoc();
-
-                        if (CondDL) {
-
-                            Line =
-                                CondDL.getLine();
-
-                            Column =
-                                CondDL.getCol();
-                        }
-                    }
-
-                    /*
-                     * Collect source variables which
-                     * participate in the condition.
-                     */
-                    std::vector<std::string>
-                        Variables;
-
-                    std::set<const Value *>
-                        Visited;
-
-                    collectVariables(
-                        Condition,
-                        Info,
-                        Variables,
-                        Visited);
-
-                    if (Variables.empty())
-                        continue;
-
-                    IRBuilder<> Builder(DFCall);
-
-                    /*
-                     * One runtime callback per candidate.
-                     * Runtime checks whether its DFSan label
-                     * is actually contained in the condition label.
-                     */
-                    for (const std::string &Name :
-                         Variables) {
-
-                        std::set<const Value *>
-                            AddressVisited;
-
-                        AllocaInst *Address =
-                            findVariableAddress(
-                                Condition,
-                                Info,
-                                Name,
-                                AddressVisited);
-
-                        if (!Address)
-                            continue;
-
-                        uint64_t Size =
-                            M.getDataLayout()
-                             .getTypeStoreSize(
-                                 Address
-                                     ->getAllocatedType())
-                             .getFixedValue();
-
-                        Value *NamePtr =
-                            Builder.CreateGlobalString(
-                                Name,
-                                "__implicit_var_" +
-                                    Name);
-
-                        Builder.CreateCall(
-                            RuntimeCallback,
-                            {
-                                Label,
-
-                                ConstantInt::get(
-                                    I32Ty,
-                                    Line),
-
-                                ConstantInt::get(
-                                    I32Ty,
-                                    Column),
-
-                                NamePtr,
-
-                                Address,
-
-                                ConstantInt::get(
-                                    I64Ty,
-                                    Size)
-                            });
-                    }
-
-                    /*
-                     * Replace DFSan's normal conditional
-                     * callback with our reporting callback.
-                     */
-                    DFCall->eraseFromParent();
-
-                    Changed = true;
+                    if (isConditionalCallback(CI))
+                        ConditionalCallbacks.push_back(CI);
                 }
+            }
+
+            for (CallInst *DFSanCB :
+                 ConditionalCallbacks) {
+
+                auto *BR =
+                    dyn_cast_or_null<BranchInst>(
+                        DFSanCB->getNextNode());
+
+                if (!BR || !BR->isConditional())
+                    continue;
+
+                DebugLoc DL =
+                    BR->getDebugLoc();
+
+                if (!DL)
+                    continue;
+
+                unsigned Line =
+                    DL.getLine();
+
+                unsigned Column =
+                    DL.getCol();
+
+                if (Line == 0)
+                    continue;
+
+                Value *Condition =
+                    BR->getCondition();
+
+                Value *Label =
+                    DFSanCB->getArgOperand(0);
+
+                if (Label->getType() != I8Ty) {
+
+                    IRBuilder<> B(DFSanCB);
+
+                    Label =
+                        B.CreateIntCast(
+                            Label,
+                            I8Ty,
+                            false);
+                }
+
+                std::vector<VariableInfo>
+                    Variables;
+
+                std::set<Value *> Visited;
+
+                collectVariables(
+                    F,
+                    M,
+                    Condition,
+                    Variables,
+                    Visited);
+
+                if (Variables.empty())
+                    continue;
+
+                IRBuilder<> B(BR);
+
+                for (const auto &V : Variables) {
+
+                    Value *NamePtr =
+                        B.CreateGlobalString(
+                            V.Name);
+
+                    B.CreateCall(
+                        Callback,
+                        {
+                            Label,
+
+                            ConstantInt::get(
+                                I32Ty,
+                                Line),
+
+                            ConstantInt::get(
+                                I32Ty,
+                                Column),
+
+                            NamePtr,
+
+                            V.Address,
+
+                            ConstantInt::get(
+                                IntPtrTy,
+                                V.Size)
+                        });
+                }
+
+                Changed = true;
             }
         }
 
