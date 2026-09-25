@@ -12,26 +12,14 @@ target triple = "x86_64-pc-linux-gnu"
 @__dfsan_retval_origin_tls = external thread_local(initialexec) global i32
 @__dfsan_track_origins = weak_odr constant i32 0
 @0 = private unnamed_addr constant [7 x i8] c"printf\00", align 1
-@implicit.file.1 = private unnamed_addr constant [7 x i8] c"test.c\00", align 1
-@implicit.condition.1 = private unnamed_addr constant [11 x i8] c"x+y+z > 10\00", align 1
-@implicit.llvmcond.1 = private unnamed_addr constant [4 x i8] c"%47\00", align 1
-@implicit.vars.1 = private unnamed_addr constant [1 x i8] zeroinitializer, align 1
-@implicit.true.1 = private unnamed_addr constant [4 x i8] c"%48\00", align 1
-@implicit.false.1 = private unnamed_addr constant [4 x i8] c"%50\00", align 1
-@implicit.file.2 = private unnamed_addr constant [7 x i8] c"test.c\00", align 1
-@implicit.condition.2 = private unnamed_addr constant [11 x i8] c"y + z > 20\00", align 1
-@implicit.llvmcond.2 = private unnamed_addr constant [4 x i8] c"%57\00", align 1
-@implicit.vars.2 = private unnamed_addr constant [1 x i8] zeroinitializer, align 1
-@implicit.true.2 = private unnamed_addr constant [4 x i8] c"%58\00", align 1
-@implicit.false.2 = private unnamed_addr constant [4 x i8] c"%60\00", align 1
-@implicit.file.3 = private unnamed_addr constant [7 x i8] c"test.c\00", align 1
-@implicit.condition.3 = private unnamed_addr constant [7 x i8] c"z > 20\00", align 1
-@implicit.llvmcond.3 = private unnamed_addr constant [4 x i8] c"%63\00", align 1
-@implicit.vars.3 = private unnamed_addr constant [1 x i8] zeroinitializer, align 1
-@implicit.true.3 = private unnamed_addr constant [4 x i8] c"%64\00", align 1
-@implicit.false.3 = private unnamed_addr constant [4 x i8] c"%66\00", align 1
+@__implicit_variable_x = private unnamed_addr constant [2 x i8] c"x\00", align 1
+@__implicit_variable_y = private unnamed_addr constant [2 x i8] c"y\00", align 1
+@__implicit_variable_z = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@__implicit_variable_y.1 = private unnamed_addr constant [2 x i8] c"y\00", align 1
+@__implicit_variable_z.2 = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@__implicit_variable_z.3 = private unnamed_addr constant [2 x i8] c"z\00", align 1
 
-; Function Attrs: noinline nounwind optnone uwtable
+; Function Attrs: noinline nounwind uwtable
 define dso_local i32 @main() #0 !dbg !25 {
   %1 = alloca i8, align 1
   %2 = alloca i32, align 4
@@ -99,8 +87,10 @@ define dso_local i32 @main() #0 !dbg !25 {
   %45 = or i8 %41, %43, !dbg !49
   %46 = add nsw i32 %42, %44, !dbg !49
   %47 = icmp sgt i32 %46, 10, !dbg !50
-  %implicit.taken = zext i1 %47 to i8, !dbg !50
-  call void @__implicit_conditional_callback(i8 %45, i32 1, i8 %implicit.taken, ptr @implicit.file.1, i32 16, i32 15, ptr @implicit.condition.1, ptr @implicit.llvmcond.1, ptr @implicit.vars.1, ptr @implicit.true.1, ptr @implicit.false.1), !dbg !50
+  call void @__implicit_branch_callback(i8 %45, i32 16, i32 15, ptr @__implicit_variable_x, ptr %6, i64 4), !dbg !50
+  call void @__implicit_branch_callback(i8 %45, i32 16, i32 15, ptr @__implicit_variable_y, ptr %8, i64 4), !dbg !50
+  call void @__implicit_branch_callback(i8 %45, i32 16, i32 15, ptr @__implicit_variable_z, ptr %10, i64 4), !dbg !50
+  call void @__dfsan_conditional_callback(i8 zeroext %45), !dbg !50
   br i1 %47, label %48, label %50, !dbg !50
 
 48:                                               ; preds = %0
@@ -115,8 +105,9 @@ define dso_local i32 @main() #0 !dbg !25 {
   %55 = or i8 %51, %53, !dbg !57
   %56 = add nsw i32 %52, %54, !dbg !57
   %57 = icmp sgt i32 %56, 20, !dbg !58
-  %implicit.taken1 = zext i1 %57 to i8, !dbg !58
-  call void @__implicit_conditional_callback(i8 %55, i32 2, i8 %implicit.taken1, ptr @implicit.file.2, i32 20, i32 15, ptr @implicit.condition.2, ptr @implicit.llvmcond.2, ptr @implicit.vars.2, ptr @implicit.true.2, ptr @implicit.false.2), !dbg !58
+  call void @__implicit_branch_callback(i8 %55, i32 20, i32 15, ptr @__implicit_variable_y.1, ptr %8, i64 4), !dbg !58
+  call void @__implicit_branch_callback(i8 %55, i32 20, i32 15, ptr @__implicit_variable_z.2, ptr %10, i64 4), !dbg !58
+  call void @__dfsan_conditional_callback(i8 zeroext %55), !dbg !58
   br i1 %57, label %58, label %60, !dbg !58
 
 58:                                               ; preds = %50
@@ -127,8 +118,8 @@ define dso_local i32 @main() #0 !dbg !25 {
   %61 = load i8, ptr %9, align 1, !dbg !62
   %62 = load i32, ptr %10, align 4, !dbg !62
   %63 = icmp sgt i32 %62, 20, !dbg !64
-  %implicit.taken2 = zext i1 %63 to i8, !dbg !64
-  call void @__implicit_conditional_callback(i8 %61, i32 3, i8 %implicit.taken2, ptr @implicit.file.3, i32 24, i32 11, ptr @implicit.condition.3, ptr @implicit.llvmcond.3, ptr @implicit.vars.3, ptr @implicit.true.3, ptr @implicit.false.3), !dbg !64
+  call void @__implicit_branch_callback(i8 %61, i32 24, i32 11, ptr @__implicit_variable_z.3, ptr %10, i64 4), !dbg !64
+  call void @__dfsan_conditional_callback(i8 zeroext %61), !dbg !64
   br i1 %63, label %64, label %66, !dbg !64
 
 64:                                               ; preds = %60
@@ -187,29 +178,26 @@ declare void @__dfsan_mem_shadow_origin_conditional_exchange(i8, ptr, ptr, ptr, 
 
 declare void @__dfsan_maybe_store_origin(i8 zeroext, ptr, i64, i32 zeroext)
 
-; Function Attrs: noinline nounwind optnone uwtable
+; Function Attrs: noinline nounwind uwtable
 define linkonce_odr dso_local i32 @"dfsw$main"() #0 {
-entry:
-  %0 = call i32 @main()
+  %1 = call i32 @main()
   store i8 0, ptr @__dfsan_retval_tls, align 2
-  ret i32 %0
+  ret i32 %1
 }
 
 define linkonce_odr void @"dfsw$dfsan_set_label"(i8 noundef zeroext %0, ptr noundef %1, i64 noundef %2) #1 {
-entry:
   call void @dfsan_set_label(i8 %0, ptr %1, i64 %2)
   ret void
 }
 
 define linkonce_odr i32 @"dfsw$printf"(ptr noundef %0, ...) #1 {
-entry:
   call void @__dfsan_vararg_wrapper(ptr @0)
   unreachable
 }
 
-declare void @__implicit_conditional_callback(i8, i32, i8, ptr, i32, i32, ptr, ptr, ptr, ptr, ptr)
+declare void @__implicit_branch_callback(i8, i32, i32, ptr, ptr, i64)
 
-attributes #0 = { noinline nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #0 = { noinline nounwind uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 attributes #1 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 attributes #2 = { nounwind memory(read) }
 

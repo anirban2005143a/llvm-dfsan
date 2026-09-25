@@ -1,7 +1,8 @@
 rm -f FindTaintedCondition.so instrumented.ll instrumented.o \
       implicit_runtime.o test_dfsan
 
-clang++ -std=c++17 -fPIC -shared FindTaintedCondition.cpp \
+clang++ -std=c++17 -fPIC -shared 
+    FindTaintedCondition.cpp \
     $(llvm-config --cxxflags --ldflags --system-libs --libs core passes) \
     -o FindTaintedCondition.so
 
