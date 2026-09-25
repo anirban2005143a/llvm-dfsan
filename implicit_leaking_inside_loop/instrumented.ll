@@ -11,20 +11,20 @@ target triple = "x86_64-pc-linux-gnu"
 @__dfsan_retval_origin_tls = external thread_local(initialexec) global i32
 @__dfsan_track_origins = weak_odr constant i32 0
 @0 = private unnamed_addr constant [7 x i8] c"printf\00", align 1
-@__implicit_loop_names = private unnamed_addr constant [4 x i8] c"i.0\00", align 1
-@__implicit_variable_names = private unnamed_addr constant [4 x i8] c"i.0\00", align 1
-@__implicit_loop_names.1 = private unnamed_addr constant [8 x i8] c"i.0,j.0\00", align 1
-@__implicit_variable_names.2 = private unnamed_addr constant [4 x i8] c"j.0\00", align 1
-@__implicit_loop_names.3 = private unnamed_addr constant [8 x i8] c"i.0,j.0\00", align 1
-@__implicit_variable_names.4 = private unnamed_addr constant [4 x i8] c"add\00", align 1
-@__implicit_loop_names.5 = private unnamed_addr constant [8 x i8] c"i.0,j.0\00", align 1
-@__implicit_variable_names.6 = private unnamed_addr constant [5 x i8] c"add6\00", align 1
-@__implicit_loop_names.7 = private unnamed_addr constant [8 x i8] c"i.0,j.0\00", align 1
-@__implicit_variable_names.8 = private unnamed_addr constant [4 x i8] c"i.0\00", align 1
-@__implicit_loop_names.9 = private unnamed_addr constant [8 x i8] c"i.0,j.0\00", align 1
-@__implicit_variable_names.10 = private unnamed_addr constant [6 x i8] c"add13\00", align 1
-@__implicit_loop_names.11 = private unnamed_addr constant [8 x i8] c"i.0,j.0\00", align 1
-@__implicit_variable_names.12 = private unnamed_addr constant [6 x i8] c"add14\00", align 1
+@__implicit_loop_names = private unnamed_addr constant [2 x i8] c"i\00", align 1
+@__implicit_variable_names = private unnamed_addr constant [2 x i8] c"i\00", align 1
+@__implicit_loop_names.1 = private unnamed_addr constant [4 x i8] c"i,j\00", align 1
+@__implicit_variable_names.2 = private unnamed_addr constant [2 x i8] c"j\00", align 1
+@__implicit_loop_names.3 = private unnamed_addr constant [4 x i8] c"i,j\00", align 1
+@__implicit_variable_names.4 = private unnamed_addr constant [8 x i8] c"unknown\00", align 1
+@__implicit_loop_names.5 = private unnamed_addr constant [4 x i8] c"i,j\00", align 1
+@__implicit_variable_names.6 = private unnamed_addr constant [2 x i8] c"x\00", align 1
+@__implicit_loop_names.7 = private unnamed_addr constant [4 x i8] c"i,j\00", align 1
+@__implicit_variable_names.8 = private unnamed_addr constant [2 x i8] c"i\00", align 1
+@__implicit_loop_names.9 = private unnamed_addr constant [4 x i8] c"i,j\00", align 1
+@__implicit_variable_names.10 = private unnamed_addr constant [2 x i8] c"x\00", align 1
+@__implicit_loop_names.11 = private unnamed_addr constant [4 x i8] c"i,j\00", align 1
+@__implicit_variable_names.12 = private unnamed_addr constant [2 x i8] c"y\00", align 1
 
 ; Function Attrs: noinline nounwind uwtable
 define dso_local i32 @main() #0 !dbg !20 {

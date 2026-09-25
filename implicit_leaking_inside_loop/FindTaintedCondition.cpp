@@ -9,6 +9,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
+#include "llvm/IR/DebugProgramInstruction.h"
 
 #include <algorithm>
 #include <string>
@@ -17,19 +18,69 @@ using namespace llvm;
 
 namespace {
 
-static std::string getDebugName(Value *V) {
+static std::string getDebugName(Function &F, Value *V) {
   if (!V)
     return "";
 
-  for (User *U : V->users()) {
-    if (auto *DVI = dyn_cast<DbgVariableIntrinsic>(U)) {
-      if (DVI->getVariable())
-        return DVI->getVariable()->getName().str();
+  // LLVM new debug-info format: DbgVariableRecord
+  for (BasicBlock &BB : F) {
+    for (Instruction &I : BB) {
+
+      if (!I.hasDbgRecords())
+        continue;
+
+      for (DbgRecord &DR : I.getDbgRecordRange()) {
+
+        auto *DVR = dyn_cast<DbgVariableRecord>(&DR);
+        if (!DVR)
+          continue;
+
+        DILocalVariable *Var = DVR->getVariable();
+        if (!Var)
+          continue;
+
+        for (unsigned Op = 0;
+             Op < DVR->getNumVariableLocationOps();
+             ++Op) {
+
+          Value *Loc =
+              DVR->getVariableLocationOp(Op);
+
+          if (Loc == V)
+            return Var->getName().str();
+        }
+      }
     }
   }
 
-  if (V->hasName())
-    return V->getName().str();
+  // Old dbg.value / dbg.declare representation
+  for (BasicBlock &BB : F) {
+    for (Instruction &I : BB) {
+
+      auto *DVI =
+          dyn_cast<DbgVariableIntrinsic>(&I);
+
+      if (!DVI)
+        continue;
+
+      DILocalVariable *Var =
+          DVI->getVariable();
+
+      if (!Var)
+        continue;
+
+      for (unsigned Op = 0;
+           Op < DVI->getNumVariableLocationOps();
+           ++Op) {
+
+        Value *Loc =
+            DVI->getVariableLocationOp(Op);
+
+        if (Loc == V)
+          return Var->getName().str();
+      }
+    }
+  }
 
   return "";
 }
@@ -43,31 +94,54 @@ static std::string getDebugName(Value *V) {
  *
  * returns "x".
  */
-static std::string findVariableName(Value *V) {
+static std::string findVariableName(
+    Function &F,
+    Value *V) {
+
+  if (!V)
+    return "";
+
   SmallVector<Value *, 32> Worklist;
   SmallPtrSet<Value *, 32> Visited;
 
   Worklist.push_back(V);
 
   while (!Worklist.empty()) {
-    Value *Cur = Worklist.pop_back_val();
 
-    if (!Cur || !Visited.insert(Cur).second)
+    Value *Cur =
+        Worklist.pop_back_val();
+
+    if (!Cur ||
+        !Visited.insert(Cur).second)
       continue;
 
-    if (std::string Name = getDebugName(Cur); !Name.empty())
+    if (std::string Name =
+            getDebugName(F, Cur);
+        !Name.empty()) {
       return Name;
+    }
 
-    if (auto *LI = dyn_cast<LoadInst>(Cur)) {
-      Value *Ptr = LI->getPointerOperand()->stripPointerCasts();
+    if (auto *LI =
+            dyn_cast<LoadInst>(Cur)) {
 
-      if (auto *AI = dyn_cast<AllocaInst>(Ptr)) {
-        if (std::string Name = getDebugName(AI); !Name.empty())
+      Value *Ptr =
+          LI->getPointerOperand()
+              ->stripPointerCasts();
+
+      if (auto *AI =
+              dyn_cast<AllocaInst>(Ptr)) {
+
+        if (std::string Name =
+                getDebugName(F, AI);
+            !Name.empty()) {
           return Name;
+        }
       }
     }
 
-    if (auto *I = dyn_cast<Instruction>(Cur)) {
+    if (auto *I =
+            dyn_cast<Instruction>(Cur)) {
+
       for (Value *Op : I->operands())
         Worklist.push_back(Op);
     }
@@ -75,6 +149,7 @@ static std::string findVariableName(Value *V) {
 
   return "";
 }
+
 
 /*
  * Get the loop induction variable.
@@ -125,6 +200,7 @@ static bool isDFSanConditionalCallback(CallInst *CI) {
 }
 
 static void collectConditionVariables(
+    Function &F, // <--- Add F here
     Value *V,
     SmallVectorImpl<std::string> &Names,
     SmallPtrSetImpl<Value *> &Visited) {
@@ -140,7 +216,7 @@ static void collectConditionVariables(
     if (auto *AI = dyn_cast<AllocaInst>(Ptr)) {
 
       std::string Name =
-          getDebugName(AI);
+          getDebugName(F, AI); // Now F is in scope
 
       if (!Name.empty())
         Names.push_back(Name);
@@ -152,8 +228,7 @@ static void collectConditionVariables(
   if (auto *PN = dyn_cast<PHINode>(V)) {
 
     std::string Name =
-        getDebugName(PN);
-
+      getDebugName(F, PN); // Now F is in scope
     if (!Name.empty())
       Names.push_back(Name);
   }
@@ -162,74 +237,55 @@ static void collectConditionVariables(
 
     for (Value *Op : I->operands())
       collectConditionVariables(
+          F, // <--- Pass F to the recursive call
           Op,
           Names,
           Visited);
   }
 }
 
-static std::string findImmediateVariableName(Value *V) {
+static std::string findImmediateVariableName(
+    Function &F,
+    Value *V) {
+
   if (!V)
     return "";
 
-  // Direct debug association.
-  for (User *U : V->users()) {
-    if (auto *DVI = dyn_cast<DbgVariableIntrinsic>(U)) {
-      if (DVI->getVariable())
-        return DVI->getVariable()->getName().str();
-    }
-  }
+  // Direct source-variable mapping.
+  std::string Name =
+      getDebugName(F, V);
 
-  // PHI / instruction itself may carry the debug variable association.
-  if (auto *I = dyn_cast<Instruction>(V)) {
-    for (User *U : I->users()) {
-      if (auto *DVI = dyn_cast<DbgVariableIntrinsic>(U)) {
-        if (DVI->getVariable())
-          return DVI->getVariable()->getName().str();
-      }
-    }
-  }
+  if (!Name.empty())
+    return Name;
 
-  // Load from an alloca.
+  // Load -> alloca -> source variable.
   if (auto *LI = dyn_cast<LoadInst>(V)) {
+
     Value *Ptr =
-        LI->getPointerOperand()->stripPointerCasts();
+        LI->getPointerOperand()
+           ->stripPointerCasts();
 
     if (auto *AI = dyn_cast<AllocaInst>(Ptr)) {
-      for (User *U : AI->users()) {
-        if (auto *DVI = dyn_cast<DbgVariableIntrinsic>(U)) {
-          if (DVI->getVariable())
-            return DVI->getVariable()->getName().str();
-        }
-      }
 
-      if (AI->hasName())
-        return AI->getName().str();
+      Name = getDebugName(F, AI);
+
+      if (!Name.empty())
+        return Name;
     }
   }
-
-  if (V->hasName())
-    return V->getName().str();
 
   return "";
 }
 
-static std::string getConditionVariableName(Value *Condition) {
+static std::string getConditionVariableName(
+    Function &F,
+    Value *Condition) {
 
-  /*
-   * For:
-   *
-   *     if (x > 5)
-   *
-   * Condition is:
-   *
-   *     icmp x, 5
-   *
-   * We only inspect the actual operand of the comparison,
-   * rather than recursively walking x -> secret/i/j.
-   */
+  if (!Condition)
+    return "unknown";
 
-  if (auto *Cmp = dyn_cast<ICmpInst>(Condition)) {
+  if (auto *Cmp =
+          dyn_cast<ICmpInst>(Condition)) {
 
     for (Value *Op : Cmp->operands()) {
 
@@ -237,7 +293,7 @@ static std::string getConditionVariableName(Value *Condition) {
         continue;
 
       std::string Name =
-          findImmediateVariableName(Op);
+          findImmediateVariableName(F, Op);
 
       if (!Name.empty())
         return Name;
@@ -246,6 +302,7 @@ static std::string getConditionVariableName(Value *Condition) {
 
   return "unknown";
 }
+
 
 static Value *toI64(
     IRBuilder<> &IRB,
@@ -480,7 +537,8 @@ struct FindTaintedConditionPass
 
       std::string VariableNames =
         getConditionVariableName(
-          BI->getCondition());
+            F,
+            BI->getCondition());
 
       if (VariableNames.empty())
         VariableNames = "unknown";
@@ -532,8 +590,8 @@ struct FindTaintedConditionPass
         LoopIVs.push_back(IV);
 
         std::string Name =
-            IV ? findVariableName(IV)
-               : "";
+          IV ? findVariableName(F, IV)
+            : "";
 
         if (Name.empty())
           Name = "loop" +
