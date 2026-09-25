@@ -1,42 +1,56 @@
-rm -f FindTaintedCondition.so \
-      test.ll \
-      instrumented.ll \
-      instrumented.o \
-      implicit_runtime.o \
-      test_dfsan
-
-clang++ -std=c++17 -fPIC -shared \
-    FindTaintedCondition.cpp \
-    $(llvm-config --cxxflags --ldflags --system-libs --libs core) \
-    -o FindTaintedCondition.so
-
-clang -O0 -g \
-    -fsanitize=dataflow \
-    -mllvm -dfsan-conditional-callbacks \
-    -S -emit-llvm \
-    test.c \
-    -o test.ll
+rm -f \
+  FindTaintedCondition.so \
+  test.ll \
+  dfsan.ll \
+  instrumented.ll \
+  instrumented.o \
+  implicit_runtime.o \
+  test_dfsan
 
 
-opt \
-    -load-pass-plugin=./FindTaintedCondition.so \
-    -passes=implicit-taint \
-    test.ll \
-    -S \
-    -o instrumented.ll
+clang++ -std=c++17 \
+  -fPIC \
+  -shared \
+  FindTaintedCondition.cpp \
+  $(llvm-config --cxxflags --ldflags --system-libs --libs core passes) \
+  -o FindTaintedCondition.so
 
-clang -O0 -c \
-    instrumented.ll \
-    -o instrumented.o
 
-clang -O0 -c \
-    implicit_runtime.c \
-    -o implicit_runtime.o
+clang -O0 \
+  -g \
+  -Xclang -disable-O0-optnone \
+  -fsanitize=dataflow \
+  -mllvm -dfsan-conditional-callbacks \
+  -S \
+  -emit-llvm \
+  test.c \
+  -o dfsan.ll
+
+
+opt -S \
+  -load-pass-plugin=./FindTaintedCondition.so \
+  -passes=implicit-taint \
+  dfsan.ll \
+  -o instrumented.ll
+
+
+clang -O0 \
+  -c \
+  instrumented.ll \
+  -o instrumented.o
+
+
+clang -O0 \
+  -c \
+  implicit_runtime.c \
+  -o implicit_runtime.o
+
 
 clang \
-    -fsanitize=dataflow \
-    instrumented.o \
-    implicit_runtime.o \
-    -o test_dfsan
-    
+  instrumented.o \
+  implicit_runtime.o \
+  -fsanitize=dataflow \
+  -o test_dfsan
+
+
 ./test_dfsan

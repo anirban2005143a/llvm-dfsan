@@ -1,6 +1,7 @@
+#include <stdio.h>
 #include <sanitizer/dfsan_interface.h>
 
-int main(void)
+int main()
 {
     int secret1 = 5;
     int secret2 = 8;
@@ -19,19 +20,17 @@ int main(void)
     int y = secret2;
     int z = 12;
 
-    volatile int sink = 0;
-
     if (x + y + z > 10) {
-        sink = 1;
+        printf("Condition 1: true\n");
     }
 
     if (y + z > 20) {
-        sink = 2;
+        printf("Condition 2: true\n");
     }
 
     if (z > 20) {
-        sink = 3;
+        printf("Z is clean\n");
     }
 
-    return sink;
+    return 0;
 }

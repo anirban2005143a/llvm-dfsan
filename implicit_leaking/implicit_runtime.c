@@ -1,4 +1,3 @@
-#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -6,25 +5,13 @@
 
 void __implicit_branch_callback(
     dfsan_label condition_label,
+    dfsan_label variable_label,
     uint32_t line,
     uint32_t column,
-    const char *variable,
-    const void *address,
-    uint64_t size)
+    const char *variable)
 {
     if (condition_label == 0)
         return;
-
-    if (variable == NULL)
-        return;
-
-    if (address == NULL || size == 0)
-        return;
-
-    dfsan_label variable_label =
-        dfsan_read_label(
-            address,
-            (size_t)size);
 
     if (variable_label == 0)
         return;
@@ -32,6 +19,9 @@ void __implicit_branch_callback(
     if (!dfsan_has_label(
             condition_label,
             variable_label))
+        return;
+
+    if (variable == NULL)
         return;
 
     printf(
