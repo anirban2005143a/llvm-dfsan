@@ -13,7 +13,7 @@ target triple = "x86_64-pc-linux-gnu"
 @__dfsan_track_origins = weak_odr constant i32 0
 @0 = private unnamed_addr constant [7 x i8] c"printf\00", align 1
 
-; Function Attrs: noinline nounwind uwtable
+; Function Attrs: noinline nounwind optnone uwtable
 define dso_local i32 @main() #0 !dbg !25 {
   %1 = alloca i8, align 1
   %2 = alloca i32, align 4
@@ -166,7 +166,7 @@ declare void @__dfsan_mem_shadow_origin_conditional_exchange(i8, ptr, ptr, ptr, 
 
 declare void @__dfsan_maybe_store_origin(i8 zeroext, ptr, i64, i32 zeroext)
 
-; Function Attrs: noinline nounwind uwtable
+; Function Attrs: noinline nounwind optnone uwtable
 define linkonce_odr dso_local i32 @"dfsw$main"() #0 {
   %1 = call i32 @main()
   store i8 0, ptr @__dfsan_retval_tls, align 2
@@ -183,7 +183,7 @@ define linkonce_odr i32 @"dfsw$printf"(ptr noundef %0, ...) #1 {
   unreachable
 }
 
-attributes #0 = { noinline nounwind uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #0 = { noinline nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 attributes #1 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 attributes #2 = { nounwind memory(read) }
 
@@ -193,7 +193,7 @@ attributes #2 = { nounwind memory(read) }
 
 !0 = !DIGlobalVariableExpression(var: !1, expr: !DIExpression())
 !1 = distinct !DIGlobalVariable(scope: null, file: !2, line: 17, type: !3, isLocal: true, isDefinition: true)
-!2 = !DIFile(filename: "test.c", directory: "/home/anirban2005/dfsan/implicit_leaking", checksumkind: CSK_MD5, checksum: "160a06f1948da0e9109660661e7634bd")
+!2 = !DIFile(filename: "test.c", directory: "/home/anirban2005/dfsan/implicit_leaking", checksumkind: CSK_MD5, checksum: "3990ba2dd0e0d4365faf5c70c4102ecf")
 !3 = !DICompositeType(tag: DW_TAG_array_type, baseType: !4, size: 152, elements: !5)
 !4 = !DIBasicType(name: "char", size: 8, encoding: DW_ATE_signed_char)
 !5 = !{!6}
@@ -237,13 +237,13 @@ attributes #2 = { nounwind memory(read) }
 !43 = !DILocation(line: 14, column: 9, scope: !25)
 !44 = !DILocation(line: 16, column: 9, scope: !45)
 !45 = distinct !DILexicalBlock(scope: !25, file: !2, line: 16, column: 9)
-!46 = !DILocation(line: 16, column: 11, scope: !45)
-!47 = !DILocation(line: 16, column: 10, scope: !45)
-!48 = !DILocation(line: 16, column: 13, scope: !45)
-!49 = !DILocation(line: 16, column: 12, scope: !45)
-!50 = !DILocation(line: 16, column: 15, scope: !45)
+!46 = !DILocation(line: 16, column: 13, scope: !45)
+!47 = !DILocation(line: 16, column: 11, scope: !45)
+!48 = !DILocation(line: 16, column: 17, scope: !45)
+!49 = !DILocation(line: 16, column: 15, scope: !45)
+!50 = !DILocation(line: 16, column: 19, scope: !45)
 !51 = !DILocation(line: 17, column: 9, scope: !52)
-!52 = distinct !DILexicalBlock(scope: !45, file: !2, line: 16, column: 21)
+!52 = distinct !DILexicalBlock(scope: !45, file: !2, line: 16, column: 25)
 !53 = !DILocation(line: 18, column: 5, scope: !52)
 !54 = !DILocation(line: 20, column: 9, scope: !55)
 !55 = distinct !DILexicalBlock(scope: !25, file: !2, line: 20, column: 9)
@@ -259,4 +259,4 @@ attributes #2 = { nounwind memory(read) }
 !65 = !DILocation(line: 25, column: 9, scope: !66)
 !66 = distinct !DILexicalBlock(scope: !63, file: !2, line: 24, column: 17)
 !67 = !DILocation(line: 26, column: 5, scope: !66)
-!68 = !DILocation(line: 29, column: 5, scope: !25)
+!68 = !DILocation(line: 28, column: 5, scope: !25)

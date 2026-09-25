@@ -13,7 +13,7 @@ int main()
     int y = secret2;
     int z = 12;
 
-    if (x+y+z > 10) {
+    if (x + y + z > 10) {
         printf("Condition 1: true\n");
     }
 
@@ -24,7 +24,6 @@ int main()
     if (z > 20) {
         printf("Z is clean\n");
     }
-
 
     return 0;
 }

@@ -12,14 +12,14 @@ target triple = "x86_64-pc-linux-gnu"
 @__dfsan_retval_origin_tls = external thread_local(initialexec) global i32
 @__dfsan_track_origins = weak_odr constant i32 0
 @0 = private unnamed_addr constant [7 x i8] c"printf\00", align 1
-@__implicit_variable_x = private unnamed_addr constant [2 x i8] c"x\00", align 1
-@__implicit_variable_y = private unnamed_addr constant [2 x i8] c"y\00", align 1
-@__implicit_variable_z = private unnamed_addr constant [2 x i8] c"z\00", align 1
-@__implicit_variable_y.1 = private unnamed_addr constant [2 x i8] c"y\00", align 1
-@__implicit_variable_z.2 = private unnamed_addr constant [2 x i8] c"z\00", align 1
-@__implicit_variable_z.3 = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@__implicit_var_0 = private unnamed_addr constant [2 x i8] c"x\00", align 1
+@__implicit_var_1 = private unnamed_addr constant [2 x i8] c"y\00", align 1
+@__implicit_var_2 = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@__implicit_var_0.1 = private unnamed_addr constant [2 x i8] c"y\00", align 1
+@__implicit_var_1.2 = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@__implicit_var_0.3 = private unnamed_addr constant [2 x i8] c"z\00", align 1
 
-; Function Attrs: noinline nounwind uwtable
+; Function Attrs: noinline nounwind optnone uwtable
 define dso_local i32 @main() #0 !dbg !25 {
   %1 = alloca i8, align 1
   %2 = alloca i32, align 4
@@ -87,9 +87,9 @@ define dso_local i32 @main() #0 !dbg !25 {
   %45 = or i8 %41, %43, !dbg !49
   %46 = add nsw i32 %42, %44, !dbg !49
   %47 = icmp sgt i32 %46, 10, !dbg !50
-  call void @__implicit_branch_callback(i8 %45, i32 16, i32 15, ptr @__implicit_variable_x, ptr %6, i64 4), !dbg !50
-  call void @__implicit_branch_callback(i8 %45, i32 16, i32 15, ptr @__implicit_variable_y, ptr %8, i64 4), !dbg !50
-  call void @__implicit_branch_callback(i8 %45, i32 16, i32 15, ptr @__implicit_variable_z, ptr %10, i64 4), !dbg !50
+  call void @__implicit_branch_callback(i8 %45, i32 16, i32 19, ptr @__implicit_var_0, ptr %6, i64 4), !dbg !50
+  call void @__implicit_branch_callback(i8 %45, i32 16, i32 19, ptr @__implicit_var_1, ptr %8, i64 4), !dbg !50
+  call void @__implicit_branch_callback(i8 %45, i32 16, i32 19, ptr @__implicit_var_2, ptr %10, i64 4), !dbg !50
   call void @__dfsan_conditional_callback(i8 zeroext %45), !dbg !50
   br i1 %47, label %48, label %50, !dbg !50
 
@@ -105,8 +105,8 @@ define dso_local i32 @main() #0 !dbg !25 {
   %55 = or i8 %51, %53, !dbg !57
   %56 = add nsw i32 %52, %54, !dbg !57
   %57 = icmp sgt i32 %56, 20, !dbg !58
-  call void @__implicit_branch_callback(i8 %55, i32 20, i32 15, ptr @__implicit_variable_y.1, ptr %8, i64 4), !dbg !58
-  call void @__implicit_branch_callback(i8 %55, i32 20, i32 15, ptr @__implicit_variable_z.2, ptr %10, i64 4), !dbg !58
+  call void @__implicit_branch_callback(i8 %55, i32 20, i32 15, ptr @__implicit_var_0.1, ptr %8, i64 4), !dbg !58
+  call void @__implicit_branch_callback(i8 %55, i32 20, i32 15, ptr @__implicit_var_1.2, ptr %10, i64 4), !dbg !58
   call void @__dfsan_conditional_callback(i8 zeroext %55), !dbg !58
   br i1 %57, label %58, label %60, !dbg !58
 
@@ -118,7 +118,7 @@ define dso_local i32 @main() #0 !dbg !25 {
   %61 = load i8, ptr %9, align 1, !dbg !62
   %62 = load i32, ptr %10, align 4, !dbg !62
   %63 = icmp sgt i32 %62, 20, !dbg !64
-  call void @__implicit_branch_callback(i8 %61, i32 24, i32 11, ptr @__implicit_variable_z.3, ptr %10, i64 4), !dbg !64
+  call void @__implicit_branch_callback(i8 %61, i32 24, i32 11, ptr @__implicit_var_0.3, ptr %10, i64 4), !dbg !64
   call void @__dfsan_conditional_callback(i8 zeroext %61), !dbg !64
   br i1 %63, label %64, label %66, !dbg !64
 
@@ -178,7 +178,7 @@ declare void @__dfsan_mem_shadow_origin_conditional_exchange(i8, ptr, ptr, ptr, 
 
 declare void @__dfsan_maybe_store_origin(i8 zeroext, ptr, i64, i32 zeroext)
 
-; Function Attrs: noinline nounwind uwtable
+; Function Attrs: noinline nounwind optnone uwtable
 define linkonce_odr dso_local i32 @"dfsw$main"() #0 {
   %1 = call i32 @main()
   store i8 0, ptr @__dfsan_retval_tls, align 2
@@ -197,7 +197,7 @@ define linkonce_odr i32 @"dfsw$printf"(ptr noundef %0, ...) #1 {
 
 declare void @__implicit_branch_callback(i8, i32, i32, ptr, ptr, i64)
 
-attributes #0 = { noinline nounwind uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #0 = { noinline nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 attributes #1 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 attributes #2 = { nounwind memory(read) }
 
@@ -207,7 +207,7 @@ attributes #2 = { nounwind memory(read) }
 
 !0 = !DIGlobalVariableExpression(var: !1, expr: !DIExpression())
 !1 = distinct !DIGlobalVariable(scope: null, file: !2, line: 17, type: !3, isLocal: true, isDefinition: true)
-!2 = !DIFile(filename: "test.c", directory: "/home/anirban2005/dfsan/implicit_leaking", checksumkind: CSK_MD5, checksum: "160a06f1948da0e9109660661e7634bd")
+!2 = !DIFile(filename: "test.c", directory: "/home/anirban2005/dfsan/implicit_leaking", checksumkind: CSK_MD5, checksum: "3990ba2dd0e0d4365faf5c70c4102ecf")
 !3 = !DICompositeType(tag: DW_TAG_array_type, baseType: !4, size: 152, elements: !5)
 !4 = !DIBasicType(name: "char", size: 8, encoding: DW_ATE_signed_char)
 !5 = !{!6}
@@ -251,13 +251,13 @@ attributes #2 = { nounwind memory(read) }
 !43 = !DILocation(line: 14, column: 9, scope: !25)
 !44 = !DILocation(line: 16, column: 9, scope: !45)
 !45 = distinct !DILexicalBlock(scope: !25, file: !2, line: 16, column: 9)
-!46 = !DILocation(line: 16, column: 11, scope: !45)
-!47 = !DILocation(line: 16, column: 10, scope: !45)
-!48 = !DILocation(line: 16, column: 13, scope: !45)
-!49 = !DILocation(line: 16, column: 12, scope: !45)
-!50 = !DILocation(line: 16, column: 15, scope: !45)
+!46 = !DILocation(line: 16, column: 13, scope: !45)
+!47 = !DILocation(line: 16, column: 11, scope: !45)
+!48 = !DILocation(line: 16, column: 17, scope: !45)
+!49 = !DILocation(line: 16, column: 15, scope: !45)
+!50 = !DILocation(line: 16, column: 19, scope: !45)
 !51 = !DILocation(line: 17, column: 9, scope: !52)
-!52 = distinct !DILexicalBlock(scope: !45, file: !2, line: 16, column: 21)
+!52 = distinct !DILexicalBlock(scope: !45, file: !2, line: 16, column: 25)
 !53 = !DILocation(line: 18, column: 5, scope: !52)
 !54 = !DILocation(line: 20, column: 9, scope: !55)
 !55 = distinct !DILexicalBlock(scope: !25, file: !2, line: 20, column: 9)
@@ -273,4 +273,4 @@ attributes #2 = { nounwind memory(read) }
 !65 = !DILocation(line: 25, column: 9, scope: !66)
 !66 = distinct !DILexicalBlock(scope: !63, file: !2, line: 24, column: 17)
 !67 = !DILocation(line: 26, column: 5, scope: !66)
-!68 = !DILocation(line: 29, column: 5, scope: !25)
+!68 = !DILocation(line: 28, column: 5, scope: !25)
