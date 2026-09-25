@@ -53,4 +53,4 @@ clang \
   -o test_dfsan
 
 
-./test_dfsan
+./test_dfsan >/dev/null

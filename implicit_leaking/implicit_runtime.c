@@ -24,7 +24,8 @@ void __implicit_branch_callback(
     if (variable == NULL)
         return;
 
-    printf(
+    fprintf(
+        stderr,
         "line=%u col=%u variable=%s\n",
         line,
         column,

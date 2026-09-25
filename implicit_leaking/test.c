@@ -17,7 +17,7 @@ int main()
         sizeof(secret2));
 
     int x = secret1;
-    int y = secret2;
+    int y = 5;
     int z = 12;
 
     if (x + y + z > 10) {
@@ -30,6 +30,12 @@ int main()
 
     if (z > 20) {
         printf("Z is clean\n");
+    }
+
+    z = x + y;
+
+    if(z == 0){
+        printf("Z is zero");
     }
 
     return 0;
