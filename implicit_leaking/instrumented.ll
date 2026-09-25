@@ -11,16 +11,15 @@ target triple = "x86_64-pc-linux-gnu"
 @__dfsan_arg_origin_tls = external thread_local(initialexec) global [200 x i32]
 @__dfsan_retval_origin_tls = external thread_local(initialexec) global i32
 @__dfsan_track_origins = weak_odr constant i32 0
-@0 = private unnamed_addr constant [7 x i8] c"printf\00", align 1
-@__implicit_var_0 = private unnamed_addr constant [2 x i8] c"x\00", align 1
-@__implicit_var_1 = private unnamed_addr constant [2 x i8] c"y\00", align 1
-@__implicit_var_2 = private unnamed_addr constant [2 x i8] c"z\00", align 1
-@__implicit_var_0.1 = private unnamed_addr constant [2 x i8] c"y\00", align 1
-@__implicit_var_1.2 = private unnamed_addr constant [2 x i8] c"z\00", align 1
-@__implicit_var_0.3 = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@__implicit_variable_x = private unnamed_addr constant [2 x i8] c"x\00", align 1
+@__implicit_variable_y = private unnamed_addr constant [2 x i8] c"y\00", align 1
+@__implicit_variable_z = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@__implicit_variable_y.1 = private unnamed_addr constant [2 x i8] c"y\00", align 1
+@__implicit_variable_z.2 = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@__implicit_variable_z.3 = private unnamed_addr constant [2 x i8] c"z\00", align 1
 
 ; Function Attrs: noinline nounwind optnone uwtable
-define dso_local i32 @main() #0 !dbg !25 {
+define dso_local i32 @main.dfsan() #0 !dbg !25 {
   %1 = alloca i8, align 1
   %2 = alloca i32, align 4
   %3 = alloca i32, align 4
@@ -45,8 +44,14 @@ define dso_local i32 @main() #0 !dbg !25 {
   %16 = inttoptr i64 %15 to ptr, !dbg !33
   store i32 0, ptr %16, align 1, !dbg !33
   store i32 8, ptr %4, align 4, !dbg !33
-  call void @dfsan_set_label(i8 noundef zeroext 1, ptr noundef %3, i64 noundef 4), !dbg !34
-  call void @dfsan_set_label(i8 noundef zeroext 2, ptr noundef %4, i64 noundef 4), !dbg !35
+  store i8 0, ptr @__dfsan_arg_tls, align 2, !dbg !34
+  store i8 0, ptr inttoptr (i64 add (i64 ptrtoint (ptr @__dfsan_arg_tls to i64), i64 2) to ptr), align 2, !dbg !34
+  store i8 0, ptr inttoptr (i64 add (i64 ptrtoint (ptr @__dfsan_arg_tls to i64), i64 4) to ptr), align 2, !dbg !34
+  call void @dfsan_set_label.dfsan(i8 noundef zeroext 1, ptr noundef %3, i64 noundef 4), !dbg !34
+  store i8 0, ptr @__dfsan_arg_tls, align 2, !dbg !35
+  store i8 0, ptr inttoptr (i64 add (i64 ptrtoint (ptr @__dfsan_arg_tls to i64), i64 2) to ptr), align 2, !dbg !35
+  store i8 0, ptr inttoptr (i64 add (i64 ptrtoint (ptr @__dfsan_arg_tls to i64), i64 4) to ptr), align 2, !dbg !35
+  call void @dfsan_set_label.dfsan(i8 noundef zeroext 2, ptr noundef %4, i64 noundef 4), !dbg !35
     #dbg_declare(ptr %6, !36, !DIExpression(), !37)
   %17 = ptrtoint ptr %3 to i64, !dbg !38
   %18 = xor i64 %17, 87960930222080, !dbg !38
@@ -87,14 +92,16 @@ define dso_local i32 @main() #0 !dbg !25 {
   %45 = or i8 %41, %43, !dbg !49
   %46 = add nsw i32 %42, %44, !dbg !49
   %47 = icmp sgt i32 %46, 10, !dbg !50
-  call void @__implicit_branch_callback(i8 %45, i32 16, i32 19, ptr @__implicit_var_0, ptr %6, i64 4), !dbg !50
-  call void @__implicit_branch_callback(i8 %45, i32 16, i32 19, ptr @__implicit_var_1, ptr %8, i64 4), !dbg !50
-  call void @__implicit_branch_callback(i8 %45, i32 16, i32 19, ptr @__implicit_var_2, ptr %10, i64 4), !dbg !50
+  call void @__implicit_branch_callback(i8 %45, i32 16, i32 19, ptr @__implicit_variable_x, ptr %6, i64 4), !dbg !50
+  call void @__implicit_branch_callback(i8 %45, i32 16, i32 19, ptr @__implicit_variable_y, ptr %8, i64 4), !dbg !50
+  call void @__implicit_branch_callback(i8 %45, i32 16, i32 19, ptr @__implicit_variable_z, ptr %10, i64 4), !dbg !50
   call void @__dfsan_conditional_callback(i8 zeroext %45), !dbg !50
   br i1 %47, label %48, label %50, !dbg !50
 
 48:                                               ; preds = %0
-  %49 = call i32 (ptr, ...) @printf(ptr noundef @.str), !dbg !51
+  store i8 0, ptr @__dfsan_arg_tls, align 2, !dbg !51
+  %49 = call i32 (ptr, ...) @printf.dfsan(ptr noundef @.str), !dbg !51
+  %_dfsret = load i8, ptr @__dfsan_retval_tls, align 2, !dbg !53
   br label %50, !dbg !53
 
 50:                                               ; preds = %48, %0
@@ -105,34 +112,39 @@ define dso_local i32 @main() #0 !dbg !25 {
   %55 = or i8 %51, %53, !dbg !57
   %56 = add nsw i32 %52, %54, !dbg !57
   %57 = icmp sgt i32 %56, 20, !dbg !58
-  call void @__implicit_branch_callback(i8 %55, i32 20, i32 15, ptr @__implicit_var_0.1, ptr %8, i64 4), !dbg !58
-  call void @__implicit_branch_callback(i8 %55, i32 20, i32 15, ptr @__implicit_var_1.2, ptr %10, i64 4), !dbg !58
+  call void @__implicit_branch_callback(i8 %55, i32 20, i32 15, ptr @__implicit_variable_y.1, ptr %8, i64 4), !dbg !58
+  call void @__implicit_branch_callback(i8 %55, i32 20, i32 15, ptr @__implicit_variable_z.2, ptr %10, i64 4), !dbg !58
   call void @__dfsan_conditional_callback(i8 zeroext %55), !dbg !58
   br i1 %57, label %58, label %60, !dbg !58
 
 58:                                               ; preds = %50
-  %59 = call i32 (ptr, ...) @printf(ptr noundef @.str.1), !dbg !59
+  store i8 0, ptr @__dfsan_arg_tls, align 2, !dbg !59
+  %59 = call i32 (ptr, ...) @printf.dfsan(ptr noundef @.str.1), !dbg !59
+  %_dfsret1 = load i8, ptr @__dfsan_retval_tls, align 2, !dbg !61
   br label %60, !dbg !61
 
 60:                                               ; preds = %58, %50
   %61 = load i8, ptr %9, align 1, !dbg !62
   %62 = load i32, ptr %10, align 4, !dbg !62
   %63 = icmp sgt i32 %62, 20, !dbg !64
-  call void @__implicit_branch_callback(i8 %61, i32 24, i32 11, ptr @__implicit_var_0.3, ptr %10, i64 4), !dbg !64
+  call void @__implicit_branch_callback(i8 %61, i32 24, i32 11, ptr @__implicit_variable_z.3, ptr %10, i64 4), !dbg !64
   call void @__dfsan_conditional_callback(i8 zeroext %61), !dbg !64
   br i1 %63, label %64, label %66, !dbg !64
 
 64:                                               ; preds = %60
-  %65 = call i32 (ptr, ...) @printf(ptr noundef @.str.2), !dbg !65
+  store i8 0, ptr @__dfsan_arg_tls, align 2, !dbg !65
+  %65 = call i32 (ptr, ...) @printf.dfsan(ptr noundef @.str.2), !dbg !65
+  %_dfsret2 = load i8, ptr @__dfsan_retval_tls, align 2, !dbg !67
   br label %66, !dbg !67
 
 66:                                               ; preds = %64, %60
+  store i8 0, ptr @__dfsan_retval_tls, align 2, !dbg !68
   ret i32 0, !dbg !68
 }
 
-declare void @dfsan_set_label(i8 noundef zeroext, ptr noundef, i64 noundef) #1
+declare void @dfsan_set_label.dfsan(i8 noundef zeroext, ptr noundef, i64 noundef) #1
 
-declare i32 @printf(ptr noundef, ...) #1
+declare i32 @printf.dfsan(ptr noundef, ...) #1
 
 declare void @__dfsan_load_callback(i8 zeroext, ptr)
 
@@ -177,23 +189,6 @@ declare void @__dfsan_mem_shadow_origin_transfer(ptr, ptr, i64)
 declare void @__dfsan_mem_shadow_origin_conditional_exchange(i8, ptr, ptr, ptr, i64)
 
 declare void @__dfsan_maybe_store_origin(i8 zeroext, ptr, i64, i32 zeroext)
-
-; Function Attrs: noinline nounwind optnone uwtable
-define linkonce_odr dso_local i32 @"dfsw$main"() #0 {
-  %1 = call i32 @main()
-  store i8 0, ptr @__dfsan_retval_tls, align 2
-  ret i32 %1
-}
-
-define linkonce_odr void @"dfsw$dfsan_set_label"(i8 noundef zeroext %0, ptr noundef %1, i64 noundef %2) #1 {
-  call void @dfsan_set_label(i8 %0, ptr %1, i64 %2)
-  ret void
-}
-
-define linkonce_odr i32 @"dfsw$printf"(ptr noundef %0, ...) #1 {
-  call void @__dfsan_vararg_wrapper(ptr @0)
-  unreachable
-}
 
 declare void @__implicit_branch_callback(i8, i32, i32, ptr, ptr, i64)
 

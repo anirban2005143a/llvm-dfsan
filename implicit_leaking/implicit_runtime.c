@@ -5,12 +5,12 @@
 #include <sanitizer/dfsan_interface.h>
 
 void __implicit_branch_callback(
-    uint8_t condition_label,
+    dfsan_label condition_label,
     uint32_t line,
     uint32_t column,
     const char *variable,
     const void *address,
-    size_t size)
+    uint64_t size)
 {
     if (condition_label == 0)
         return;
@@ -19,7 +19,9 @@ void __implicit_branch_callback(
         return;
 
     dfsan_label variable_label =
-        dfsan_read_label(address, size);
+        dfsan_read_label(
+            address,
+            (size_t)size);
 
     if (variable_label == 0)
         return;
@@ -29,8 +31,7 @@ void __implicit_branch_callback(
             variable_label))
         return;
 
-    fprintf(
-        stderr,
+    printf(
         "line=%u col=%u variable=%s\n",
         line,
         column,
