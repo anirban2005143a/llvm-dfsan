@@ -1,0 +1,50 @@
+rm -f FindTaintedCondition.so
+rm -f dfsan.ll
+rm -f instrumented.ll
+rm -f implicit_runtime.o
+rm -f implicit_test
+
+clang++ \
+  -std=c++17 \
+  -fPIC \
+  -shared \
+  FindTaintedCondition.cpp \
+  -o FindTaintedCondition.so \
+  $(llvm-config \
+      --cxxflags \
+      --ldflags \
+      --system-libs \
+      --libs core analysis passes)
+
+clang \
+  -O0 \
+  -g \
+  -Xclang -disable-O0-optnone \
+  -fsanitize=dataflow \
+  -mllvm -dfsan-conditional-callbacks \
+  -S \
+  -emit-llvm \
+  test.c \
+  -o dfsan.ll
+
+opt \
+  -load-pass-plugin=./FindTaintedCondition.so \
+  -passes=implicit-taint \
+  -S \
+  dfsan.ll \
+  -o instrumented.ll
+
+clang \
+  -fno-sanitize=dataflow \
+  -c \
+  implicit_runtime.c \
+  -o implicit_runtime.o
+
+clang \
+  -fsanitize=dataflow \
+  -Wno-backend-plugin \
+  instrumented.ll \
+  implicit_runtime.o \
+  -o implicit_test
+
+./implicit_test

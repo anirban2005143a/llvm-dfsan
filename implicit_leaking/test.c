@@ -22,6 +22,14 @@ int main()
 
     if (x + y + z > 10) {
         printf("Condition 1: true\n");
+
+        if(y+z > 10){
+            printf("Nested Tainted Condition 1");
+
+            if(y > 10){
+                printf("Nested Tainted Condition 2");
+            }
+        }
     }
 
     if (y + z > 20) {
