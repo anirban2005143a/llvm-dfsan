@@ -1,22 +1,54 @@
 #include <stdio.h>
+#include <stdbool.h>
 #include <sanitizer/dfsan_interface.h>
 
 int main(void)
 {
     int secret1 = 1;
-    int secret2 = 1;
+    int secret2 = 0;
 
-    dfsan_set_label(1, &secret1, sizeof(secret1));
-    dfsan_set_label(2, &secret2, sizeof(secret2));
+    dfsan_set_label(
+        1,
+        &secret1,
+        sizeof(secret1));
 
-    int x = 0, y = 0, z = 0, a = 0, b = 0, c = 0;
+    dfsan_set_label(
+        2,
+        &secret2,
+        sizeof(secret2));
 
-    if(secret1 + secret2){
+    int x = 0;
+    int y = 0;
+    int z = 0;
+    int a = 0;
+    int b = 0;
+    int c = 0;
+
+    /*
+     * secret1 controls the outer branch.
+     *
+     * secret2 controls the nested condition.
+     *
+     * Only stores belonging to branches actually entered
+     * during this execution receive implicit taint.
+     */
+    if (secret1) {
+
         x = 10;
-    } else if(secret1){
-        y = 10;
+
+        if (secret2) {
+            y = 20;
+        } else {
+            z = 30;
+        }
+
+    } else if (secret2) {
+        x = 10;
+        y = 40;
+
     } else {
-        z = 10;
+        x = 10;
+        z = 50;
     }
 
     a = x;
@@ -24,47 +56,46 @@ int main(void)
     c = z;
 
     printf(
-        "secret1   label = %u\n"
-        "secret2   label = %u\n"
-        "x         label = %u\n"
-        "y         label = %u\n"
-        "z         label = %u\n"
-        "a         label = %u\n"
-        "b         label = %u\n"
-        "c         label = %u\n",
-        // dfsan_get_label(secret1),
-        // dfsan_get_label(secret2),
-        // dfsan_get_label(x),
-        // dfsan_get_label(y),
-        // dfsan_get_label(z),
-        // dfsan_get_label(a),
-        // dfsan_get_label(b),
-        // dfsan_get_label(c)
+        "secret1 = %u\n"
+        "secret2 = %u\n"
+        "x       = %u\n"
+        "y       = %u\n"
+        "z       = %u\n"
+        "a       = %u\n"
+        "b       = %u\n"
+        "c       = %u\n",
 
         (unsigned)dfsan_read_label(
-          &secret1,
-          sizeof(secret1)),
+            &secret1,
+            sizeof(secret1)),
+
         (unsigned)dfsan_read_label(
-          &secret2,
-          sizeof(secret2)),
+            &secret2,
+            sizeof(secret2)),
+
         (unsigned)dfsan_read_label(
-          &x,
-          sizeof(x)),
+            &x,
+            sizeof(x)),
+
         (unsigned)dfsan_read_label(
-          &y,
-          sizeof(y)),
+            &y,
+            sizeof(y)),
+
         (unsigned)dfsan_read_label(
-          &z,
-          sizeof(z)),
+            &z,
+            sizeof(z)),
+
         (unsigned)dfsan_read_label(
-          &a,
-          sizeof(a)),
+            &a,
+            sizeof(a)),
+
         (unsigned)dfsan_read_label(
-          &b,
-          sizeof(b)),
+            &b,
+            sizeof(b)),
+
         (unsigned)dfsan_read_label(
-          &c,
-          sizeof(c))
+            &c,
+            sizeof(c))
     );
 
     return 0;
