@@ -1,7 +1,8 @@
-/* File: implicit_runtime.c */
+// File: implicit_runtime.c
 
 #include <stdint.h>
 #include <stdio.h>
+
 #include <sanitizer/dfsan_interface.h>
 
 void __implicit_branch_callback(
@@ -19,13 +20,16 @@ void __implicit_branch_callback(
 
     if (!dfsan_has_label(
             variable_label,
-            condition_label))
+            condition_label)) {
+
         return;
+    }
 
     fprintf(
         stderr,
         "[IMPLICIT TAINT] "
-        "line=%u col=%u "
+        "line=%u "
+        "col=%u "
         "variable=%s "
         "condition_label=%u "
         "variable_label=%u\n",

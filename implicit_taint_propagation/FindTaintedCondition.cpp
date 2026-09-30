@@ -3,18 +3,19 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Dominators.h"
+#include "llvm/Analysis/PostDominators.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/DebugInfoMetadata.h"
-#include "llvm/IR/DebugProgramInstruction.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Instructions.h"
 #include "llvm/IR/InstIterator.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/PassManager.h"
-#include "llvm/Analysis/PostDominators.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 
@@ -31,7 +32,11 @@ struct VariableInfo {
 
 struct ConditionInfo {
     BranchInst *Branch = nullptr;
-    Value *Label = nullptr;
+    CallInst *Callback = nullptr;
+
+    // DFSan label generated for the condition at the actual branch.
+    Value *DynamicLabel = nullptr;
+
     unsigned Line = 0;
     unsigned Column = 0;
 };
@@ -39,7 +44,13 @@ struct ConditionInfo {
 struct DefinitionState {
     bool Initialized = false;
     bool Unknown = false;
+
     SmallVector<StoreInst *, 8> Stores;
+};
+
+struct LabelSource {
+    Value *Pointer = nullptr;
+    Value *SSAValue = nullptr;
 };
 
 static Value *getBasePointer(Value *V) {
@@ -66,48 +77,6 @@ static void buildVariableInfo(
 
     for (Instruction &I : instructions(F)) {
 
-        if (I.hasDbgRecords()) {
-
-            for (DbgRecord &DR : I.getDbgRecordRange()) {
-
-                auto *DVR =
-                    dyn_cast<DbgVariableRecord>(&DR);
-
-                if (!DVR)
-                    continue;
-
-                DILocalVariable *Var =
-                    DVR->getVariable();
-
-                if (!Var)
-                    continue;
-
-                std::string Name =
-                    Var->getName().str();
-
-                for (unsigned Op = 0;
-                     Op < DVR->getNumVariableLocationOps();
-                     ++Op) {
-
-                    Value *V =
-                        DVR->getVariableLocationOp(Op);
-
-                    if (!V)
-                        continue;
-
-                    Value *Base =
-                        getBasePointer(V);
-
-                    if (auto *AI =
-                            dyn_cast_or_null<AllocaInst>(
-                                Base)) {
-
-                        Info.Names[AI] = Name;
-                    }
-                }
-            }
-        }
-
         if (auto *DDI = dyn_cast<DbgDeclareInst>(&I)) {
 
             DILocalVariable *Var =
@@ -119,14 +88,52 @@ static void buildVariableInfo(
             if (!Var || !Addr)
                 continue;
 
-            Value *Base =
-                getBasePointer(Addr);
+            auto *AI =
+                dyn_cast_or_null<AllocaInst>(
+                    getBasePointer(Addr));
 
-            if (auto *AI =
-                    dyn_cast_or_null<AllocaInst>(Base)) {
-
+            if (AI) {
                 Info.Names[AI] =
                     Var->getName().str();
+            }
+        }
+
+        if (!I.hasDbgRecords())
+            continue;
+
+        for (DbgRecord &DR :
+             I.getDbgRecordRange()) {
+
+            auto *DVR =
+                dyn_cast<DbgVariableRecord>(&DR);
+
+            if (!DVR)
+                continue;
+
+            DILocalVariable *Var =
+                DVR->getVariable();
+
+            if (!Var)
+                continue;
+
+            for (unsigned Op = 0;
+                 Op < DVR->getNumVariableLocationOps();
+                 ++Op) {
+
+                Value *V =
+                    DVR->getVariableLocationOp(Op);
+
+                if (!V)
+                    continue;
+
+                auto *AI =
+                    dyn_cast_or_null<AllocaInst>(
+                        getBasePointer(V));
+
+                if (AI) {
+                    Info.Names[AI] =
+                        Var->getName().str();
+                }
             }
         }
     }
@@ -136,13 +143,14 @@ static std::string getVariableName(
     AllocaInst *AI,
     const VariableInfo &Info) {
 
-    if (!AI)
-        return "unknown";
-
-    auto It = Info.Names.find(AI);
+    auto It =
+        Info.Names.find(AI);
 
     if (It != Info.Names.end())
         return It->second;
+
+    if (AI && AI->hasName())
+        return AI->getName().str();
 
     return "unknown";
 }
@@ -156,9 +164,14 @@ static CallInst *findDFSanConditionalCallback(
     Instruction *Cur =
         BR->getPrevNode();
 
-    while (Cur) {
+    for (unsigned I = 0;
+         Cur && I < 32;
+         ++I) {
 
-        if (auto *CI = dyn_cast<CallInst>(Cur)) {
+        auto *CI =
+            dyn_cast<CallInst>(Cur);
+
+        if (CI) {
 
             Function *Callee =
                 CI->getCalledFunction();
@@ -178,7 +191,8 @@ static CallInst *findDFSanConditionalCallback(
             }
         }
 
-        Cur = Cur->getPrevNode();
+        Cur =
+            Cur->getPrevNode();
     }
 
     return nullptr;
@@ -214,9 +228,11 @@ static void collectRegion(
     if (!Start || Start == Stop)
         return;
 
-    SmallVector<BasicBlock *, 64> Worklist;
+    SmallVector<BasicBlock *, 32>
+        Worklist;
 
-    SmallPtrSet<BasicBlock *, 32> Visited;
+    SmallPtrSet<BasicBlock *, 32>
+        Visited;
 
     Worklist.push_back(Start);
 
@@ -236,15 +252,49 @@ static void collectRegion(
 
         Result.push_back(BB);
 
-        for (BasicBlock *Succ : successors(BB)) {
+        for (BasicBlock *Succ :
+             successors(BB)) {
 
             if (Succ == Stop)
                 continue;
 
-            if (!Visited.contains(Succ))
-                Worklist.push_back(Succ);
+            Worklist.push_back(Succ);
         }
     }
+}
+
+static void addUniqueAlloca(
+    SmallVectorImpl<AllocaInst *> &List,
+    AllocaInst *AI) {
+
+    if (!AI)
+        return;
+
+    for (AllocaInst *Existing :
+         List) {
+
+        if (Existing == AI)
+            return;
+    }
+
+    List.push_back(AI);
+}
+
+static void addUniqueStore(
+    SmallVectorImpl<StoreInst *> &List,
+    StoreInst *Store) {
+
+    if (!Store)
+        return;
+
+    for (StoreInst *Existing :
+         List) {
+
+        if (Existing == Store)
+            return;
+    }
+
+    List.push_back(Store);
 }
 
 static AllocaInst *getStoredAlloca(
@@ -253,54 +303,32 @@ static AllocaInst *getStoredAlloca(
     if (!Store)
         return nullptr;
 
-    Value *Base =
+    return dyn_cast_or_null<AllocaInst>(
         getBasePointer(
-            Store->getPointerOperand());
-
-    return dyn_cast_or_null<AllocaInst>(Base);
+            Store->getPointerOperand()));
 }
 
-static bool addStoreUnique(
-    SmallVectorImpl<StoreInst *> &Stores,
-    StoreInst *Store) {
+static void collectTargets(
+    ArrayRef<BasicBlock *> Region,
+    SmallVectorImpl<AllocaInst *> &Targets) {
 
-    for (StoreInst *Existing : Stores) {
+    for (BasicBlock *BB :
+         Region) {
 
-        if (Existing == Store)
-            return false;
+        for (Instruction &I :
+             *BB) {
+
+            auto *Store =
+                dyn_cast<StoreInst>(&I);
+
+            if (!Store)
+                continue;
+
+            addUniqueAlloca(
+                Targets,
+                getStoredAlloca(Store));
+        }
     }
-
-    Stores.push_back(Store);
-    return true;
-}
-
-static bool mergeDefinitionState(
-    DefinitionState &Dst,
-    const DefinitionState &Src) {
-
-    if (!Src.Initialized)
-        return false;
-
-    if (!Dst.Initialized) {
-
-        Dst = Src;
-        return true;
-    }
-
-    bool Changed = false;
-
-    if (Src.Unknown && !Dst.Unknown) {
-        Dst.Unknown = true;
-        Changed = true;
-    }
-
-    for (StoreInst *Store : Src.Stores) {
-
-        if (addStoreUnique(Dst.Stores, Store))
-            Changed = true;
-    }
-
-    return Changed;
 }
 
 static bool sameStoredValue(
@@ -309,9 +337,6 @@ static bool sameStoredValue(
 
     if (!A || !B)
         return false;
-
-    if (A == B)
-        return true;
 
     Value *VA =
         A->getValueOperand();
@@ -331,8 +356,11 @@ static bool sameStoredValue(
     if (!CA || !CB)
         return false;
 
-    if (CA->getType() != CB->getType())
+    if (CA->getType() !=
+        CB->getType()) {
+
         return false;
+    }
 
     return CA->isElementWiseEqual(CB);
 }
@@ -341,35 +369,39 @@ static bool sameDefinitionState(
     const DefinitionState &A,
     const DefinitionState &B) {
 
-    if (!A.Initialized || !B.Initialized)
-        return A.Initialized == B.Initialized;
+    if (A.Initialized !=
+        B.Initialized) {
 
-    if (A.Unknown != B.Unknown)
         return false;
-
-    for (StoreInst *SA : A.Stores) {
-
-        bool Found = false;
-
-        for (StoreInst *SB : B.Stores) {
-
-            if (sameStoredValue(SA, SB)) {
-                Found = true;
-                break;
-            }
-        }
-
-        if (!Found)
-            return false;
     }
 
-    for (StoreInst *SB : B.Stores) {
+    if (!A.Initialized)
+        return true;
+
+    if (A.Unknown !=
+        B.Unknown) {
+
+        return false;
+    }
+
+    if (A.Stores.size() !=
+        B.Stores.size()) {
+
+        return false;
+    }
+
+    for (StoreInst *SA :
+         A.Stores) {
 
         bool Found = false;
 
-        for (StoreInst *SA : A.Stores) {
+        for (StoreInst *SB :
+             B.Stores) {
 
-            if (sameStoredValue(SA, SB)) {
+            if (sameStoredValue(
+                    SA,
+                    SB)) {
+
                 Found = true;
                 break;
             }
@@ -382,6 +414,30 @@ static bool sameDefinitionState(
     return true;
 }
 
+static void mergeDefinitionState(
+    DefinitionState &Dst,
+    const DefinitionState &Src) {
+
+    if (!Src.Initialized)
+        return;
+
+    if (!Dst.Initialized) {
+        Dst = Src;
+        return;
+    }
+
+    Dst.Unknown |=
+        Src.Unknown;
+
+    for (StoreInst *Store :
+         Src.Stores) {
+
+        addUniqueStore(
+            Dst.Stores,
+            Store);
+    }
+}
+
 static bool collectFinalDefinitions(
     ArrayRef<BasicBlock *> Region,
     BasicBlock *Start,
@@ -389,35 +445,49 @@ static bool collectFinalDefinitions(
     AllocaInst *Target,
     DefinitionState &ExitState) {
 
-    ExitState = DefinitionState();
+    ExitState =
+        DefinitionState();
 
-    if (!Start || !Stop || !Target)
+    if (!Start ||
+        !Stop ||
+        !Target ||
+        Region.empty()) {
+
         return false;
+    }
 
-    if (Region.empty())
-        return false;
+    SmallPtrSet<BasicBlock *, 32>
+        RegionSet;
 
-    SmallPtrSet<BasicBlock *, 32> RegionSet;
+    for (BasicBlock *BB :
+         Region) {
 
-    for (BasicBlock *BB : Region)
         RegionSet.insert(BB);
+    }
 
     if (!RegionSet.contains(Start))
         return false;
 
-    DenseMap<BasicBlock *, DefinitionState> InStates;
+    DenseMap<
+        BasicBlock *,
+        DefinitionState>
+        InStates;
 
-    SmallVector<BasicBlock *, 64> Worklist;
+    SmallVector<BasicBlock *, 64>
+        Worklist;
+
+    SmallPtrSet<BasicBlock *, 32>
+        InWorklist;
 
     DefinitionState Initial;
+
     Initial.Initialized = true;
     Initial.Unknown = true;
 
-    InStates[Start] = Initial;
+    InStates[Start] =
+        Initial;
+
     Worklist.push_back(Start);
-
-    SmallPtrSet<BasicBlock *, 32> InWorklist;
-
     InWorklist.insert(Start);
 
     bool HasExit = false;
@@ -429,16 +499,11 @@ static bool collectFinalDefinitions(
 
         InWorklist.erase(BB);
 
-        auto InIt =
-            InStates.find(BB);
-
-        if (InIt == InStates.end())
-            continue;
-
         DefinitionState State =
-            InIt->second;
+            InStates.lookup(BB);
 
-        for (Instruction &I : *BB) {
+        for (Instruction &I :
+             *BB) {
 
             auto *Store =
                 dyn_cast<StoreInst>(&I);
@@ -446,23 +511,17 @@ static bool collectFinalDefinitions(
             if (!Store)
                 continue;
 
-            AllocaInst *StoredAI =
-                getStoredAlloca(Store);
+            if (getStoredAlloca(Store) !=
+                Target) {
 
-            if (StoredAI != Target)
                 continue;
+            }
 
             State.Initialized = true;
             State.Unknown = false;
             State.Stores.clear();
             State.Stores.push_back(Store);
         }
-
-        Instruction *Term =
-            BB->getTerminator();
-
-        if (!Term)
-            continue;
 
         for (BasicBlock *Succ :
              successors(BB)) {
@@ -489,16 +548,30 @@ static bool collectFinalDefinitions(
             if (!RegionSet.contains(Succ))
                 continue;
 
-            bool Changed =
-                mergeDefinitionState(
-                    InStates[Succ],
-                    State);
+            DefinitionState Old =
+                InStates.lookup(Succ);
 
-            if (Changed &&
-                !InWorklist.contains(Succ)) {
+            DefinitionState New =
+                Old;
 
-                Worklist.push_back(Succ);
-                InWorklist.insert(Succ);
+            mergeDefinitionState(
+                New,
+                State);
+
+            if (!sameDefinitionState(
+                    Old,
+                    New)) {
+
+                InStates[Succ] =
+                    New;
+
+                if (InWorklist.insert(
+                        Succ)
+                        .second) {
+
+                    Worklist.push_back(
+                        Succ);
+                }
             }
         }
     }
@@ -513,25 +586,12 @@ static bool isConditionValueDependent(
     if (!TrueState.Initialized ||
         !FalseState.Initialized) {
 
-        return true;
+        return false;
     }
 
     return !sameDefinitionState(
         TrueState,
         FalseState);
-}
-
-static void addUniqueConditionIndex(
-    SmallVectorImpl<unsigned> &Indices,
-    unsigned Index) {
-
-    for (unsigned Existing : Indices) {
-
-        if (Existing == Index)
-            return;
-    }
-
-    Indices.push_back(Index);
 }
 
 static uint64_t getAllocaSize(
@@ -541,88 +601,359 @@ static uint64_t getAllocaSize(
     if (!AI)
         return 0;
 
-    Type *AllocatedType =
-        AI->getAllocatedType();
-
-    if (!AllocatedType)
-        return 0;
-
-    if (auto *Count =
-            dyn_cast<ConstantInt>(
-                AI->getArraySize())) {
-
-        TypeSize ElementSize =
-            DL.getTypeAllocSize(
-                AllocatedType);
-
-        if (ElementSize.isScalable())
-            return 0;
-
-        return ElementSize.getFixedValue() *
-               Count->getZExtValue();
-    }
-
-    TypeSize Size =
+    TypeSize ElementSize =
         DL.getTypeAllocSize(
-            AllocatedType);
+            AI->getAllocatedType());
 
-    if (Size.isScalable())
+    if (ElementSize.isScalable())
         return 0;
 
-    return Size.getFixedValue();
+    auto *Count =
+        dyn_cast<ConstantInt>(
+            AI->getArraySize());
+
+    if (!Count)
+        return ElementSize.getFixedValue();
+
+    return ElementSize.getFixedValue() *
+           Count->getZExtValue();
 }
 
-static FunctionCallee getDFSanAddLabel(
+/*
+ * ------------------------------------------------------------
+ * Condition-source analysis
+ * ------------------------------------------------------------
+ *
+ * Example:
+ *
+ *     if (secret2)
+ *
+ * LLVM condition:
+ *
+ *     load secret2
+ *     icmp ...
+ *
+ * We recover "secret2" as the source of the condition label.
+ *
+ * This is important for:
+ *
+ *     if (secret1) {
+ *         x = 10;
+ *     } else if (secret2) {
+ *         y = 40;
+ *     } else {
+ *         z = 50;
+ *     }
+ *
+ * The else-if condition is not dynamically executed when
+ * secret1 is true. Nevertheless, its source label (2) must still
+ * be available so that y/z receive:
+ *
+ *     label(secret1) U label(secret2)
+ *
+ * ------------------------------------------------------------
+ */
+
+static void addUniqueLabelSource(
+    SmallVectorImpl<LabelSource> &Sources,
+    Value *Pointer,
+    Value *SSAValue) {
+
+    for (const LabelSource &Existing :
+         Sources) {
+
+        if (Existing.Pointer == Pointer &&
+            Existing.SSAValue == SSAValue) {
+
+            return;
+        }
+    }
+
+    Sources.push_back(
+        {Pointer, SSAValue});
+}
+
+static void collectConditionSources(
+    Value *V,
+    SmallPtrSetImpl<Value *> &Visited,
+    SmallVectorImpl<LabelSource> &Sources) {
+
+    if (!V)
+        return;
+
+    if (isa<Constant>(V))
+        return;
+
+    V =
+        V->stripPointerCasts();
+
+    if (!Visited.insert(V).second)
+        return;
+
+    if (auto *Load =
+            dyn_cast<LoadInst>(V)) {
+
+        Value *Base =
+            getBasePointer(
+                Load->getPointerOperand());
+
+        if (Base) {
+
+            addUniqueLabelSource(
+                Sources,
+                Base,
+                nullptr);
+
+        } else {
+
+            addUniqueLabelSource(
+                Sources,
+                Load->getPointerOperand(),
+                nullptr);
+        }
+
+        return;
+    }
+
+    if (auto *PHI =
+            dyn_cast<PHINode>(V)) {
+
+        for (Value *Incoming :
+             PHI->incoming_values()) {
+
+            collectConditionSources(
+                Incoming,
+                Visited,
+                Sources);
+        }
+
+        return;
+    }
+
+    if (auto *Select =
+            dyn_cast<SelectInst>(V)) {
+
+        collectConditionSources(
+            Select->getCondition(),
+            Visited,
+            Sources);
+
+        collectConditionSources(
+            Select->getTrueValue(),
+            Visited,
+            Sources);
+
+        collectConditionSources(
+            Select->getFalseValue(),
+            Visited,
+            Sources);
+
+        return;
+    }
+
+    if (auto *GEP =
+            dyn_cast<GetElementPtrInst>(V)) {
+
+        collectConditionSources(
+            GEP->getPointerOperand(),
+            Visited,
+            Sources);
+
+        for (Value *Index :
+             GEP->indices()) {
+
+            collectConditionSources(
+                Index,
+                Visited,
+                Sources);
+        }
+
+        return;
+    }
+
+    if (auto *Call =
+            dyn_cast<CallInst>(V)) {
+
+        for (unsigned I = 0;
+             I < Call->arg_size();
+             ++I) {
+
+            collectConditionSources(
+                Call->getArgOperand(I),
+                Visited,
+                Sources);
+        }
+
+        return;
+    }
+
+    if (auto *I =
+            dyn_cast<Instruction>(V)) {
+
+        for (Value *Operand :
+             I->operands()) {
+
+            collectConditionSources(
+                Operand,
+                Visited,
+                Sources);
+        }
+
+        return;
+    }
+
+    /*
+     * Function argument or another non-instruction
+     * SSA value.
+     */
+    addUniqueLabelSource(
+        Sources,
+        nullptr,
+        V);
+}
+
+static bool isDFSanSetLabelCall(
+    CallInst *CI) {
+
+    if (!CI)
+        return false;
+
+    Function *Callee =
+        CI->getCalledFunction();
+
+    if (!Callee)
+        return false;
+
+    StringRef Name =
+        Callee->getName();
+
+    return Name ==
+               "dfsan_set_label" ||
+           Name ==
+               "__dfsan_set_label";
+}
+
+static Instruction *findInitialLabelInsertionPoint(
+    Function &F) {
+
+    BasicBlock &Entry =
+        F.getEntryBlock();
+
+    Instruction *InsertPoint =
+        &*Entry.getFirstInsertionPt();
+
+    /*
+     * Put our static implicit-label setup after all
+     * dfsan_set_label calls in the entry block.
+     *
+     * This guarantees that:
+     *
+     *     dfsan_set_label(1, &secret1, ...)
+     *     dfsan_set_label(2, &secret2, ...)
+     *
+     * have already initialized DFSan shadow memory.
+     */
+    for (Instruction &I :
+         Entry) {
+
+        auto *CI =
+            dyn_cast<CallInst>(&I);
+
+        if (!isDFSanSetLabelCall(CI))
+            continue;
+
+        InsertPoint =
+            I.getNextNode();
+
+        if (!InsertPoint)
+            InsertPoint =
+                Entry.getTerminator();
+    }
+
+    return InsertPoint;
+}
+
+static CallInst *findDominatingSetLabel(
+    Function &F,
+    AllocaInst *AI,
+    DominatorTree &DT,
+    Instruction *InsertBefore) {
+
+    CallInst *Best =
+        nullptr;
+
+    for (Instruction &I :
+         instructions(F)) {
+
+        auto *CI =
+            dyn_cast<CallInst>(&I);
+
+        if (!isDFSanSetLabelCall(CI))
+            continue;
+
+        if (CI->arg_size() < 3)
+            continue;
+
+        Value *Address =
+            getBasePointer(
+                CI->getArgOperand(1));
+
+        if (Address != AI)
+            continue;
+
+        if (!DT.dominates(
+                CI,
+                InsertBefore)) {
+
+            continue;
+        }
+
+        Best = CI;
+    }
+
+    return Best;
+}
+
+static Type *getDFSanLabelType(
     Module &M) {
 
-    LLVMContext &Ctx =
-        M.getContext();
+    if (Function *F =
+            M.getFunction(
+                "__dfsan_conditional_callback")) {
 
-    Type *I8Ty =
-        Type::getInt8Ty(Ctx);
+        if (F->arg_size() > 0)
+            return F->getArg(0)->getType();
+    }
 
-    Type *VoidTy =
-        Type::getVoidTy(Ctx);
+    if (Function *F =
+            M.getFunction(
+                "__dfsan_conditional_callback_origin")) {
 
-    PointerType *PtrTy =
-        PointerType::get(Ctx, 0);
+        if (F->arg_size() > 0)
+            return F->getArg(0)->getType();
+    }
 
-    Type *SizeTy =
-        M.getDataLayout().getIntPtrType(Ctx);
-
-    FunctionType *Ty =
-        FunctionType::get(
-            VoidTy,
-            {
-                I8Ty,
-                PtrTy,
-                SizeTy
-            },
-            false);
-
-    return M.getOrInsertFunction(
-        "dfsan_add_label",
-        Ty);
+    return Type::getInt8Ty(
+        M.getContext());
 }
 
 static FunctionCallee getDFSanReadLabel(
-    Module &M) {
+    Module &M,
+    Type *LabelTy) {
 
     LLVMContext &Ctx =
         M.getContext();
-
-    Type *I8Ty =
-        Type::getInt8Ty(Ctx);
 
     PointerType *PtrTy =
         PointerType::get(Ctx, 0);
 
     Type *SizeTy =
-        M.getDataLayout().getIntPtrType(Ctx);
+        M.getDataLayout()
+            .getIntPtrType(Ctx);
 
-    FunctionType *Ty =
+    FunctionType *FT =
         FunctionType::get(
-            I8Ty,
+            LabelTy,
             {
                 PtrTy,
                 SizeTy
@@ -631,68 +962,377 @@ static FunctionCallee getDFSanReadLabel(
 
     return M.getOrInsertFunction(
         "dfsan_read_label",
-        Ty);
+        FT);
 }
 
-static FunctionCallee getRuntimeCallback(
-    Module &M) {
+static FunctionCallee getDFSanGetLabel(
+    Module &M,
+    Type *LabelTy) {
 
     LLVMContext &Ctx =
         M.getContext();
 
-    Type *I8Ty =
-        Type::getInt8Ty(Ctx);
+    Type *DataTy =
+        Type::getInt64Ty(Ctx);
 
-    Type *I32Ty =
-        Type::getInt32Ty(Ctx);
-
-    Type *VoidTy =
-        Type::getVoidTy(Ctx);
-
-    PointerType *PtrTy =
-        PointerType::get(Ctx, 0);
-
-    FunctionType *Ty =
+    FunctionType *FT =
         FunctionType::get(
-            VoidTy,
+            LabelTy,
             {
-                I8Ty,
-                I8Ty,
-                I32Ty,
-                I32Ty,
-                PtrTy
+                DataTy
             },
             false);
 
     return M.getOrInsertFunction(
-        "__implicit_branch_callback",
-        Ty);
+        "dfsan_get_label",
+        FT);
 }
 
-static void addConditionLabelToVariable(
+static FunctionCallee getDFSanAddLabel(
+    Module &M,
+    Type *LabelTy) {
+
+    LLVMContext &Ctx =
+        M.getContext();
+
+    PointerType *PtrTy =
+        PointerType::get(Ctx, 0);
+
+    Type *SizeTy =
+        M.getDataLayout()
+            .getIntPtrType(Ctx);
+
+    FunctionType *FT =
+        FunctionType::get(
+            Type::getVoidTy(Ctx),
+            {
+                LabelTy,
+                PtrTy,
+                SizeTy
+            },
+            false);
+
+    return M.getOrInsertFunction(
+        "dfsan_add_label",
+        FT);
+}
+
+static FunctionCallee getDFSanUnion(
+    Module &M,
+    Type *LabelTy) {
+
+    FunctionType *FT =
+        FunctionType::get(
+            LabelTy,
+            {
+                LabelTy,
+                LabelTy
+            },
+            false);
+
+    return M.getOrInsertFunction(
+        "dfsan_union",
+        FT);
+}
+
+static Value *getSourceLabel(
+    Module &M,
+    Function &F,
+    IRBuilder<> &Builder,
+    const LabelSource &Source,
+    DominatorTree &DT,
+    Instruction *InsertBefore,
+    Type *LabelTy) {
+
+    LLVMContext &Ctx =
+        M.getContext();
+
+    const DataLayout &DL =
+        M.getDataLayout();
+
+    /*
+     * Stack/global memory source:
+     *
+     * Prefer the original dfsan_set_label()
+     * label argument. This makes the source label
+     * independent of whether the corresponding
+     * condition is dynamically executed.
+     */
+    if (Source.Pointer) {
+
+        Value *Base =
+            getBasePointer(
+                Source.Pointer);
+
+        if (auto *AI =
+                dyn_cast_or_null<AllocaInst>(
+                    Base)) {
+
+            if (CallInst *SetLabel =
+                    findDominatingSetLabel(
+                        F,
+                        AI,
+                        DT,
+                        InsertBefore)) {
+
+                Value *Label =
+                    SetLabel->getArgOperand(0);
+
+                if (Label->getType() !=
+                    LabelTy) {
+
+                    Label =
+                        Builder.CreateIntCast(
+                            Label,
+                            LabelTy,
+                            false,
+                            "implicit.source.cast");
+                }
+
+                return Label;
+            }
+        }
+
+        /*
+         * No explicit dfsan_set_label() was found.
+         * Read the current shadow label.
+         */
+        Value *Address =
+            Builder.CreatePointerCast(
+                Source.Pointer,
+                PointerType::get(Ctx, 0),
+                "implicit.source.address");
+
+        uint64_t Size = 1;
+
+        if (auto *AI =
+                dyn_cast_or_null<AllocaInst>(
+                    Base)) {
+
+            TypeSize TS =
+                DL.getTypeAllocSize(
+                    AI->getAllocatedType());
+
+            if (!TS.isScalable())
+                Size =
+                    TS.getFixedValue();
+        }
+
+        return Builder.CreateCall(
+            getDFSanReadLabel(
+                M,
+                LabelTy),
+            {
+                Address,
+                ConstantInt::get(
+                    DL.getIntPtrType(Ctx),
+                    Size)
+            },
+            "implicit.source.label");
+    }
+
+    /*
+     * SSA source such as a function argument.
+     */
+    if (Source.SSAValue) {
+
+        Value *V =
+            Source.SSAValue;
+
+        if (auto *Arg =
+                dyn_cast<Argument>(V)) {
+
+            Value *AsI64 =
+                Builder.CreateIntCast(
+                    Arg,
+                    Type::getInt64Ty(Ctx),
+                    false,
+                    "implicit.argument.value");
+
+            return Builder.CreateCall(
+                getDFSanGetLabel(
+                    M,
+                    LabelTy),
+                {
+                    AsI64
+                },
+                "implicit.argument.label");
+        }
+
+        /*
+         * A condition instruction that dominates the
+         * insertion point can be queried directly.
+         */
+        if (auto *I =
+                dyn_cast<Instruction>(V)) {
+
+            if (DT.dominates(
+                    I,
+                    InsertBefore)) {
+
+                Value *AsI64 =
+                    Builder.CreateIntCast(
+                        I,
+                        Type::getInt64Ty(Ctx),
+                        false,
+                        "implicit.ssa.value");
+
+                return Builder.CreateCall(
+                    getDFSanGetLabel(
+                        M,
+                        LabelTy),
+                    {
+                        AsI64
+                    },
+                    "implicit.ssa.label");
+            }
+        }
+    }
+
+    return ConstantInt::get(
+        LabelTy,
+        0);
+}
+
+static Value *buildStaticConditionLabel(
+    Module &M,
+    Function &F,
+    Instruction *InsertBefore,
+    ConditionInfo &Condition,
+    DominatorTree &DT,
+    Type *LabelTy) {
+
+    LLVMContext &Ctx =
+        M.getContext();
+
+    IRBuilder<> Builder(
+        InsertBefore);
+
+    SmallVector<
+        LabelSource,
+        8>
+        Sources;
+
+    SmallPtrSet<
+        Value *,
+        32>
+        Visited;
+
+    collectConditionSources(
+        Condition.Branch->getCondition(),
+        Visited,
+        Sources);
+
+    SmallVector<
+        Value *,
+        8>
+        Labels;
+
+    for (const LabelSource &Source :
+         Sources) {
+
+        Value *Label =
+            getSourceLabel(
+                M,
+                F,
+                Builder,
+                Source,
+                DT,
+                InsertBefore,
+                LabelTy);
+
+        if (!Label)
+            continue;
+
+        if (Label->getType() !=
+            LabelTy) {
+
+            Label =
+                Builder.CreateIntCast(
+                    Label,
+                    LabelTy,
+                    false,
+                    "implicit.condition.cast");
+        }
+
+        Labels.push_back(Label);
+    }
+
+    /*
+     * For complex cases where the source analysis
+     * could not recover a source, use the original
+     * dynamic DFSan condition label as fallback.
+     */
+    if (Labels.empty() &&
+        Condition.DynamicLabel) {
+
+        Value *Label =
+            Condition.DynamicLabel;
+
+        if (Label->getType() !=
+            LabelTy) {
+
+            Label =
+                Builder.CreateIntCast(
+                    Label,
+                    LabelTy,
+                    false,
+                    "implicit.dynamic.cast");
+        }
+
+        return Label;
+    }
+
+    if (Labels.empty())
+        return ConstantInt::get(
+            LabelTy,
+            0);
+
+    Value *Result =
+        Labels.front();
+
+    FunctionCallee Union =
+        getDFSanUnion(
+            M,
+            LabelTy);
+
+    for (unsigned I = 1;
+         I < Labels.size();
+         ++I) {
+
+        Result =
+            Builder.CreateCall(
+                Union,
+                {
+                    Result,
+                    Labels[I]
+                },
+                "implicit.condition.union");
+    }
+
+    return Result;
+}
+
+static void addLabelToVariable(
     Module &M,
     Instruction *InsertBefore,
-    Value *ConditionLabel,
-    AllocaInst *AI,
-    const VariableInfo &Variables,
-    unsigned Line,
-    unsigned Column,
-    bool Report) {
+    Value *Label,
+    AllocaInst *AI) {
 
-    if (!InsertBefore)
-        return;
+    if (!InsertBefore ||
+        !Label ||
+        !AI) {
 
-    if (!ConditionLabel)
         return;
-
-    if (!AI)
-        return;
+    }
 
     const DataLayout &DL =
         M.getDataLayout();
 
     uint64_t Size =
-        getAllocaSize(AI, DL);
+        getAllocaSize(
+            AI,
+            DL);
 
     if (Size == 0)
         return;
@@ -700,119 +1340,56 @@ static void addConditionLabelToVariable(
     LLVMContext &Ctx =
         M.getContext();
 
-    PointerType *PtrTy =
-        PointerType::get(Ctx, 0);
-
-    Type *I8Ty =
-        Type::getInt8Ty(Ctx);
-
-    Type *SizeTy =
-        DL.getIntPtrType(Ctx);
-
     IRBuilder<> Builder(
         InsertBefore);
 
-    if (ConditionLabel->getType() != I8Ty) {
-
-        ConditionLabel =
-            Builder.CreateIntCast(
-                ConditionLabel,
-                I8Ty,
-                false,
-                "implicit.condition.label");
-    }
-
-    FunctionCallee AddLabel =
-        getDFSanAddLabel(M);
+    Type *LabelTy =
+        Label->getType();
 
     Value *Address =
         Builder.CreatePointerCast(
             AI,
-            PtrTy,
-            "implicit.target.address");
+            PointerType::get(Ctx, 0),
+            "implicit.variable.address");
 
     Value *SizeValue =
         ConstantInt::get(
-            SizeTy,
+            DL.getIntPtrType(Ctx),
             Size);
 
     Builder.CreateCall(
-        AddLabel,
+        getDFSanAddLabel(
+            M,
+            LabelTy),
         {
-            ConditionLabel,
+            Label,
             Address,
             SizeValue
         });
-
-    if (!Report)
-        return;
-
-    FunctionCallee ReadLabel =
-        getDFSanReadLabel(M);
-
-    FunctionCallee Callback =
-        getRuntimeCallback(M);
-
-    Value *FinalLabel =
-        Builder.CreateCall(
-            ReadLabel,
-            {
-                Address,
-                SizeValue
-            },
-            "implicit.final.label");
-
-    std::string Name =
-        getVariableName(
-            AI,
-            Variables);
-
-    Value *NamePtr =
-        Builder.CreateGlobalString(
-            Name,
-            "implicit.variable.name");
-
-    Type *I32Ty =
-        Type::getInt32Ty(Ctx);
-
-    Builder.CreateCall(
-        Callback,
-        {
-            ConditionLabel,
-            FinalLabel,
-            ConstantInt::get(
-                I32Ty,
-                Line),
-            ConstantInt::get(
-                I32Ty,
-                Column),
-            NamePtr
-        });
 }
 
-static void restoreConditionLabelsAfterStore(
+static void restoreLabelAfterStore(
     Module &M,
     StoreInst *Store,
-    const std::vector<ConditionInfo> &Conditions,
-    const DenseMap<
-        StoreInst *,
-        SmallVector<unsigned, 8>> &Controllers) {
+    Value *ConditionLabel) {
 
-    if (!Store)
+    if (!Store ||
+        !ConditionLabel) {
+
         return;
+    }
 
-    auto It =
-        Controllers.find(Store);
+    Instruction *InsertBefore =
+        Store->getNextNode();
 
-    if (It == Controllers.end())
-        return;
-
-    if (It->second.empty())
+    if (!InsertBefore)
         return;
 
     TypeSize StoreSize =
-        M.getDataLayout().getTypeStoreSize(
-            Store->getValueOperand()->getType());
+        M.getDataLayout()
+            .getTypeStoreSize(
+                Store->getValueOperand()
+                    ->getType());
 
     if (StoreSize.isScalable())
         return;
@@ -823,26 +1400,8 @@ static void restoreConditionLabelsAfterStore(
     if (Size == 0)
         return;
 
-    Instruction *InsertBefore =
-        Store->getNextNode();
-
-    if (!InsertBefore)
-        return;
-
     LLVMContext &Ctx =
         M.getContext();
-
-    Type *I8Ty =
-        Type::getInt8Ty(Ctx);
-
-    PointerType *PtrTy =
-        PointerType::get(Ctx, 0);
-
-    Type *SizeTy =
-        M.getDataLayout().getIntPtrType(Ctx);
-
-    FunctionCallee AddLabel =
-        getDFSanAddLabel(M);
 
     IRBuilder<> Builder(
         InsertBefore);
@@ -850,48 +1409,147 @@ static void restoreConditionLabelsAfterStore(
     Value *Address =
         Builder.CreatePointerCast(
             Store->getPointerOperand(),
-            PtrTy,
+            PointerType::get(Ctx, 0),
             "implicit.restore.address");
 
     Value *SizeValue =
         ConstantInt::get(
-            SizeTy,
+            M.getDataLayout()
+                .getIntPtrType(Ctx),
             Size);
 
-    for (unsigned Index :
-         It->second) {
+    Value *Label =
+        ConditionLabel;
 
-        if (Index >= Conditions.size())
-            continue;
+    Builder.CreateCall(
+        getDFSanAddLabel(
+            M,
+            Label->getType()),
+        {
+            Label,
+            Address,
+            SizeValue
+        });
+}
 
-        Value *Label =
-            Conditions[Index].Label;
+static FunctionCallee getRuntimeCallback(
+    Module &M,
+    Type *LabelTy) {
 
-        if (!Label)
-            continue;
+    LLVMContext &Ctx =
+        M.getContext();
 
-        if (Label->getType() != I8Ty) {
+    Type *I32Ty =
+        Type::getInt32Ty(Ctx);
 
-            Label =
-                Builder.CreateIntCast(
-                    Label,
-                    I8Ty,
-                    false,
-                    "implicit.restore.label");
-        }
+    PointerType *PtrTy =
+        PointerType::get(Ctx, 0);
 
-        Builder.CreateCall(
-            AddLabel,
+    FunctionType *FT =
+        FunctionType::get(
+            Type::getVoidTy(Ctx),
             {
-                Label,
+                LabelTy,
+                LabelTy,
+                I32Ty,
+                I32Ty,
+                PtrTy
+            },
+            false);
+
+    return M.getOrInsertFunction(
+        "__implicit_branch_callback",
+        FT);
+}
+
+static void reportVariable(
+    Module &M,
+    Instruction *InsertBefore,
+    Value *ConditionLabel,
+    AllocaInst *AI,
+    const VariableInfo &Variables,
+    unsigned Line,
+    unsigned Column) {
+
+    if (!InsertBefore ||
+        !ConditionLabel ||
+        !AI) {
+
+        return;
+    }
+
+    LLVMContext &Ctx =
+        M.getContext();
+
+    const DataLayout &DL =
+        M.getDataLayout();
+
+    uint64_t Size =
+        getAllocaSize(
+            AI,
+            DL);
+
+    if (Size == 0)
+        return;
+
+    IRBuilder<> Builder(
+        InsertBefore);
+
+    Type *LabelTy =
+        ConditionLabel->getType();
+
+    Value *Address =
+        Builder.CreatePointerCast(
+            AI,
+            PointerType::get(Ctx, 0),
+            "implicit.report.address");
+
+    Value *SizeValue =
+        ConstantInt::get(
+            DL.getIntPtrType(Ctx),
+            Size);
+
+    Value *FinalLabel =
+        Builder.CreateCall(
+            getDFSanReadLabel(
+                M,
+                LabelTy),
+            {
                 Address,
                 SizeValue
-            });
-    }
+            },
+            "implicit.final.label");
+
+    Value *Name =
+        Builder.CreateGlobalString(
+            getVariableName(
+                AI,
+                Variables),
+            "implicit.variable.name");
+
+    Type *I32Ty =
+        Type::getInt32Ty(Ctx);
+
+    Builder.CreateCall(
+        getRuntimeCallback(
+            M,
+            LabelTy),
+        {
+            ConditionLabel,
+            FinalLabel,
+            ConstantInt::get(
+                I32Ty,
+                Line),
+            ConstantInt::get(
+                I32Ty,
+                Column),
+            Name
+        });
 }
 
 class ImplicitTaintPass
-    : public PassInfoMixin<ImplicitTaintPass> {
+    : public PassInfoMixin<
+          ImplicitTaintPass> {
 
 public:
 
@@ -901,104 +1559,79 @@ public:
 
         bool Changed = false;
 
-        VariableInfo Variables;
-
-        std::vector<ConditionInfo>
-            Conditions;
-
-        DenseMap<
-            StoreInst *,
-            SmallVector<unsigned, 8>>
-            Controllers;
-
-        DenseMap<
-            unsigned,
-            SmallVector<AllocaInst *, 16>>
-            DependentTargets;
+        Type *LabelTy =
+            getDFSanLabelType(M);
 
         for (Function &F : M) {
 
             if (F.isDeclaration())
                 continue;
 
+            VariableInfo Variables;
+
             buildVariableInfo(
                 F,
                 Variables);
 
+            DominatorTree DT;
+            DT.recalculate(F);
+
             PostDominatorTree PDT;
             PDT.recalculate(F);
 
-            SmallVector<BranchInst *, 64>
-                Branches;
+            SmallVector<
+                ConditionInfo,
+                16>
+                Conditions;
 
-            for (BasicBlock &BB : F) {
+            /*
+             * ----------------------------------------------------
+             * PASS 1:
+             * Collect every conditional branch and its DFSan
+             * conditional label.
+             * ----------------------------------------------------
+             */
+            for (BasicBlock &BB :
+                 F) {
 
                 auto *BR =
                     dyn_cast<BranchInst>(
                         BB.getTerminator());
 
-                if (!BR)
+                if (!BR ||
+                    !BR->isConditional()) {
+
                     continue;
+                }
 
-                if (!BR->isConditional())
-                    continue;
-
-                Branches.push_back(BR);
-            }
-
-            SmallVector<unsigned, 64>
-                FunctionConditionIndices;
-
-            for (BranchInst *BR : Branches) {
-
-                CallInst *DFCall =
+                CallInst *Callback =
                     findDFSanConditionalCallback(
                         BR);
 
-                if (!DFCall)
+                if (!Callback)
                     continue;
 
-                if (DFCall->arg_size() == 0)
+                if (Callback->arg_size() == 0)
                     continue;
 
-                Value *ConditionLabel =
-                    DFCall->getArgOperand(0);
+                ConditionInfo Info;
 
-                if (!ConditionLabel)
-                    continue;
+                Info.Branch =
+                    BR;
 
-                LLVMContext &Ctx =
-                    M.getContext();
+                Info.Callback =
+                    Callback;
 
-                Type *I8Ty =
-                    Type::getInt8Ty(Ctx);
+                Info.DynamicLabel =
+                    Callback->getArgOperand(0);
 
-                if (ConditionLabel->getType() !=
-                    I8Ty) {
+                if (DebugLoc DL =
+                        BR->getDebugLoc()) {
 
-                    IRBuilder<> Builder(
-                        DFCall);
-
-                    ConditionLabel =
-                        Builder.CreateIntCast(
-                            ConditionLabel,
-                            I8Ty,
-                            false,
-                            "implicit.condition.label");
-                }
-
-                unsigned Line = 0;
-                unsigned Column = 0;
-
-                DebugLoc DL =
-                    BR->getDebugLoc();
-
-                if (DL) {
-
-                    Line =
+                    Info.Line =
                         DL.getLine();
 
-                    Column =
+                    Info.Column =
                         DL.getCol();
 
                 } else if (
@@ -1006,46 +1639,69 @@ public:
                         dyn_cast<Instruction>(
                             BR->getCondition())) {
 
-                    DebugLoc CondDL =
-                        CondI->getDebugLoc();
+                    if (DebugLoc DL =
+                            CondI->getDebugLoc()) {
 
-                    if (CondDL) {
+                        Info.Line =
+                            DL.getLine();
 
-                        Line =
-                            CondDL.getLine();
-
-                        Column =
-                            CondDL.getCol();
+                        Info.Column =
+                            DL.getCol();
                     }
                 }
 
-                unsigned Index =
-                    static_cast<unsigned>(
-                        Conditions.size());
-
                 Conditions.push_back(
-                    {
-                        BR,
-                        ConditionLabel,
-                        Line,
-                        Column
-                    });
-
-                FunctionConditionIndices.push_back(
-                    Index);
+                    Info);
             }
 
-            for (unsigned Index :
-                 FunctionConditionIndices) {
+            if (Conditions.empty())
+                continue;
+
+            /*
+             * DependentVariables[C] =
+             * variables whose final values are affected
+             * by condition C.
+             */
+            SmallVector<
+                SmallVector<
+                    AllocaInst *,
+                    16>,
+                16>
+                DependentVariables(
+                    Conditions.size());
+
+            /*
+             * For each variable keep every controlling
+             * condition label that must be restored after
+             * stores.
+             */
+            DenseMap<
+                AllocaInst *,
+                SmallVector<
+                    unsigned,
+                    8>>
+                VariableConditions;
+
+            /*
+             * ----------------------------------------------------
+             * PASS 2:
+             *
+             * Determine the ultimate variables affected by every
+             * conditional.
+             *
+             * This preserves the behavior that was already working
+             * for the user's previous test cases.
+             * ----------------------------------------------------
+             */
+            for (unsigned Index = 0;
+                 Index < Conditions.size();
+                 ++Index) {
 
                 ConditionInfo &Condition =
                     Conditions[Index];
 
                 BranchInst *BR =
                     Condition.Branch;
-
-                if (!BR)
-                    continue;
 
                 BasicBlock *Merge =
                     getMergeBlock(
@@ -1055,10 +1711,14 @@ public:
                 if (!Merge)
                     continue;
 
-                SmallVector<BasicBlock *, 64>
+                SmallVector<
+                    BasicBlock *,
+                    32>
                     TrueRegion;
 
-                SmallVector<BasicBlock *, 64>
+                SmallVector<
+                    BasicBlock *,
+                    32>
                     FalseRegion;
 
                 collectRegion(
@@ -1071,79 +1731,21 @@ public:
                     Merge,
                     FalseRegion);
 
-                SmallVector<AllocaInst *, 32>
-                    Targets;
+                SmallVector<
+                    AllocaInst *,
+                    32>
+                    Candidates;
 
-                for (BasicBlock *BB :
-                     TrueRegion) {
+                collectTargets(
+                    TrueRegion,
+                    Candidates);
 
-                    for (Instruction &I :
-                         *BB) {
-
-                        auto *Store =
-                            dyn_cast<StoreInst>(&I);
-
-                        if (!Store)
-                            continue;
-
-                        AllocaInst *AI =
-                            getStoredAlloca(Store);
-
-                        if (!AI)
-                            continue;
-
-                        bool Exists = false;
-
-                        for (AllocaInst *Existing :
-                             Targets) {
-
-                            if (Existing == AI) {
-                                Exists = true;
-                                break;
-                            }
-                        }
-
-                        if (!Exists)
-                            Targets.push_back(AI);
-                    }
-                }
-
-                for (BasicBlock *BB :
-                     FalseRegion) {
-
-                    for (Instruction &I :
-                         *BB) {
-
-                        auto *Store =
-                            dyn_cast<StoreInst>(&I);
-
-                        if (!Store)
-                            continue;
-
-                        AllocaInst *AI =
-                            getStoredAlloca(Store);
-
-                        if (!AI)
-                            continue;
-
-                        bool Exists = false;
-
-                        for (AllocaInst *Existing :
-                             Targets) {
-
-                            if (Existing == AI) {
-                                Exists = true;
-                                break;
-                            }
-                        }
-
-                        if (!Exists)
-                            Targets.push_back(AI);
-                    }
-                }
+                collectTargets(
+                    FalseRegion,
+                    Candidates);
 
                 for (AllocaInst *AI :
-                     Targets) {
+                     Candidates) {
 
                     DefinitionState TrueState;
                     DefinitionState FalseState;
@@ -1164,8 +1766,11 @@ public:
                             AI,
                             FalseState);
 
-                    if (!HasTrue || !HasFalse)
+                    if (!HasTrue ||
+                        !HasFalse) {
+
                         continue;
+                    }
 
                     if (!isConditionValueDependent(
                             TrueState,
@@ -1174,199 +1779,288 @@ public:
                         continue;
                     }
 
-                    bool AlreadyDependent = false;
+                    DependentVariables[Index]
+                        .push_back(AI);
 
-                    for (AllocaInst *Existing :
-                         DependentTargets[Index]) {
+                    VariableConditions[AI]
+                        .push_back(Index);
+                }
+            }
 
-                        if (Existing == AI) {
-                            AlreadyDependent = true;
-                            break;
-                        }
-                    }
+            /*
+             * ----------------------------------------------------
+             * PASS 3:
+             *
+             * Build a STATIC label for every condition.
+             *
+             * This is the critical change.
+             *
+             * For:
+             *
+             *     if (secret1) { ... }
+             *     else if (secret2) { ... }
+             *
+             * the second condition is not dynamically executed
+             * when secret1 is true.
+             *
+             * Therefore using only the dynamic callback label is
+             * insufficient.
+             *
+             * Instead:
+             *
+             *     condition1 -> label(secret1)
+             *     condition2 -> label(secret2)
+             *
+             * are recovered independently.
+             * ----------------------------------------------------
+             */
+            Instruction *LabelInsertPoint =
+                findInitialLabelInsertionPoint(F);
 
-                    if (!AlreadyDependent) {
+            if (!LabelInsertPoint)
+                LabelInsertPoint =
+                    F.getEntryBlock().getTerminator();
 
-                        DependentTargets[Index]
-                            .push_back(AI);
-                    }
+            SmallVector<
+                Value *,
+                16>
+                ConditionLabels(
+                    Conditions.size(),
+                    nullptr);
+
+            for (unsigned Index = 0;
+                 Index < Conditions.size();
+                 ++Index) {
+
+                ConditionLabels[Index] =
+                    buildStaticConditionLabel(
+                        M,
+                        F,
+                        LabelInsertPoint,
+                        Conditions[Index],
+                        DT,
+                        LabelTy);
+            }
+
+            /*
+             * ----------------------------------------------------
+             * PASS 4:
+             *
+             * Add EVERY controlling condition label to the
+             * dependent variable at the common entry point.
+             *
+             * Example:
+             *
+             *     x -> condition1
+             *     y -> condition1 + condition2
+             *     z -> condition1 + condition2
+             *
+             * Thus y/z receive label 1 and label 2 even if the
+             * condition2 branch is skipped in the current runtime
+             * execution.
+             *
+             * dfsan_add_label() performs a UNION, never a replace.
+             * ----------------------------------------------------
+             */
+            for (unsigned Index = 0;
+                 Index < Conditions.size();
+                 ++Index) {
+
+                Value *ConditionLabel =
+                    ConditionLabels[Index];
+
+                if (!ConditionLabel)
+                    continue;
+
+                if (isa<ConstantInt>(
+                        ConditionLabel)) {
+
+                    auto *CI =
+                        cast<ConstantInt>(
+                            ConditionLabel);
+
+                    if (CI->isZero())
+                        continue;
                 }
 
-                for (BasicBlock *BB :
-                     TrueRegion) {
+                for (AllocaInst *AI :
+                     DependentVariables[Index]) {
 
-                    for (Instruction &I :
-                         *BB) {
+                    addLabelToVariable(
+                        M,
+                        LabelInsertPoint,
+                        ConditionLabel,
+                        AI);
 
-                        auto *Store =
-                            dyn_cast<StoreInst>(&I);
-
-                        if (!Store)
-                            continue;
-
-                        AllocaInst *AI =
-                            getStoredAlloca(Store);
-
-                        if (!AI)
-                            continue;
-
-                        bool Dependent = false;
-
-                        for (AllocaInst *Target :
-                             DependentTargets[Index]) {
-
-                            if (Target == AI) {
-                                Dependent = true;
-                                break;
-                            }
-                        }
-
-                        if (Dependent) {
-
-                            addUniqueConditionIndex(
-                                Controllers[Store],
-                                Index);
-                        }
-                    }
+                    Changed = true;
                 }
+            }
 
-                for (BasicBlock *BB :
-                     FalseRegion) {
+            /*
+             * ----------------------------------------------------
+             * PASS 5:
+             *
+             * DFSan stores may overwrite shadow memory with the
+             * explicit label of the stored value.
+             *
+             * Restore the COMPLETE static set of controlling
+             * labels after every store.
+             *
+             * Example:
+             *
+             *     y = 40;
+             *
+             * after the store:
+             *
+             *     label(y) = label(condition1)
+             *              U label(condition2)
+             * ----------------------------------------------------
+             */
+            for (auto &Entry :
+                 VariableConditions) {
 
-                    for (Instruction &I :
-                         *BB) {
+                AllocaInst *AI =
+                    Entry.first;
 
-                        auto *Store =
-                            dyn_cast<StoreInst>(&I);
+                if (!AI)
+                    continue;
 
-                        if (!Store)
+                for (Instruction &I :
+                     instructions(F)) {
+
+                    auto *Store =
+                        dyn_cast<StoreInst>(&I);
+
+                    if (!Store)
+                        continue;
+
+                    if (getStoredAlloca(Store) !=
+                        AI) {
+
+                        continue;
+                    }
+
+                    for (unsigned Index :
+                         Entry.second) {
+
+                        if (Index >=
+                            ConditionLabels.size()) {
+
                             continue;
-
-                        AllocaInst *AI =
-                            getStoredAlloca(Store);
-
-                        if (!AI)
-                            continue;
-
-                        bool Dependent = false;
-
-                        for (AllocaInst *Target :
-                             DependentTargets[Index]) {
-
-                            if (Target == AI) {
-                                Dependent = true;
-                                break;
-                            }
                         }
 
-                        if (Dependent) {
+                        Value *Label =
+                            ConditionLabels[Index];
 
-                            addUniqueConditionIndex(
-                                Controllers[Store],
-                                Index);
+                        if (!Label)
+                            continue;
+
+                        if (isa<ConstantInt>(
+                                Label)) {
+
+                            auto *CI =
+                                cast<ConstantInt>(
+                                    Label);
+
+                            if (CI->isZero())
+                                continue;
                         }
+
+                        restoreLabelAfterStore(
+                            M,
+                            Store,
+                            Label);
+
+                        Changed = true;
                     }
                 }
             }
-        }
 
-        /*
-         * Add the implicit condition label to every variable
-         * whose possible final value differs between the
-         * two paths of the condition.
-         *
-         * This happens BEFORE the branch, so a variable such as:
-         *
-         *     if (secret2)
-         *         y = 20;
-         *     else
-         *         z = 30;
-         *
-         * causes y to be tainted even when the y store is not
-         * executed on the current path.
-         */
-        for (unsigned Index = 0;
-             Index < Conditions.size();
-             ++Index) {
+            /*
+             * ----------------------------------------------------
+             * PASS 6:
+             *
+             * Report the final labels at returns.
+             * ----------------------------------------------------
+             */
+            for (auto &Entry :
+                 VariableConditions) {
 
-            ConditionInfo &Condition =
-                Conditions[Index];
+                AllocaInst *AI =
+                    Entry.first;
 
-            BranchInst *BR =
-                Condition.Branch;
+                if (!AI)
+                    continue;
 
-            if (!BR)
-                continue;
+                for (Instruction &I :
+                     instructions(F)) {
 
-            auto It =
-                DependentTargets.find(Index);
+                    auto *Ret =
+                        dyn_cast<ReturnInst>(&I);
 
-            if (It == DependentTargets.end())
-                continue;
+                    if (!Ret)
+                        continue;
 
-            if (It->second.empty())
-                continue;
+                    for (unsigned Index :
+                         Entry.second) {
 
-            for (AllocaInst *AI :
-                 It->second) {
+                        if (Index >=
+                            ConditionLabels.size()) {
 
-                addConditionLabelToVariable(
-                    M,
-                    BR,
-                    Condition.Label,
-                    AI,
-                    Variables,
-                    Condition.Line,
-                    Condition.Column,
-                    true);
+                            continue;
+                        }
 
-                Changed = true;
+                        Value *Label =
+                            ConditionLabels[Index];
+
+                        if (!Label)
+                            continue;
+
+                        if (isa<ConstantInt>(
+                                Label)) {
+
+                            auto *CI =
+                                cast<ConstantInt>(
+                                    Label);
+
+                            if (CI->isZero())
+                                continue;
+                        }
+
+                        reportVariable(
+                            M,
+                            Ret,
+                            Label,
+                            AI,
+                            Variables,
+                            Conditions[Index].Line,
+                            Conditions[Index].Column);
+
+                        Changed = true;
+                    }
+                }
             }
-        }
 
-        /*
-         * A normal DFSan store can overwrite an implicit label
-         * with the explicit value's label. Restore the implicit
-         * labels after every controlled store.
-         */
-        for (auto &Entry :
-             Controllers) {
+            /*
+             * ----------------------------------------------------
+             * PASS 7:
+             *
+             * Remove DFSan's conditional callbacks after their
+             * labels have been captured.
+             * ----------------------------------------------------
+             */
+            for (ConditionInfo &Condition :
+                 Conditions) {
 
-            StoreInst *Store =
-                Entry.first;
+                if (!Condition.Callback)
+                    continue;
 
-            if (!Store)
-                continue;
+                if (!Condition.Callback->getParent())
+                    continue;
 
-            restoreConditionLabelsAfterStore(
-                M,
-                Store,
-                Conditions,
-                Controllers);
+                Condition.Callback
+                    ->eraseFromParent();
 
-            Changed = true;
-        }
-
-        /*
-         * Remove DFSan's experimental conditional callbacks.
-         * Their labels were already captured above.
-         */
-        for (ConditionInfo &Condition :
-             Conditions) {
-
-            if (!Condition.Branch)
-                continue;
-
-            CallInst *CI =
-                findDFSanConditionalCallback(
-                    Condition.Branch);
-
-            if (!CI)
-                continue;
-
-            if (CI->getParent()) {
-
-                CI->eraseFromParent();
                 Changed = true;
             }
         }

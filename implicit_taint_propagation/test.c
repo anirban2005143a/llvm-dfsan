@@ -26,16 +26,9 @@ int main(void)
 
     if (secret1) {
         x = 10;
-
-        if ( secret2) {
-            y = 20;
-        } else {
-            z = 30;
-        }
-
     } else if (secret2) {
+        x = 10;
         y = 40;
-
     } else {
         x = 10;
         z = 50;
