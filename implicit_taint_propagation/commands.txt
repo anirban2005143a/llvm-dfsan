@@ -11,10 +11,10 @@ clang++ \
   FindTaintedCondition.cpp \
   -o FindTaintedCondition.so \
   $(llvm-config \
-      --cxxflags \
-      --ldflags \
-      --system-libs \
-      --libs core analysis passes)
+    --cxxflags \
+    --ldflags \
+    --system-libs \
+    --libs core analysis passes)
 
 clang \
   -O0 \

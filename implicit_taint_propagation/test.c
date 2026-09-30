@@ -24,26 +24,16 @@ int main(void)
     int b = 0;
     int c = 0;
 
-    /*
-     * secret1 controls the outer branch.
-     *
-     * secret2 controls the nested condition.
-     *
-     * Only stores belonging to branches actually entered
-     * during this execution receive implicit taint.
-     */
     if (secret1) {
-
         x = 10;
 
-        if (secret2) {
+        if ( secret2) {
             y = 20;
         } else {
             z = 30;
         }
 
     } else if (secret2) {
-        x = 10;
         y = 40;
 
     } else {

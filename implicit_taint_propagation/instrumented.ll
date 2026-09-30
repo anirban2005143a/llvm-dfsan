@@ -11,12 +11,13 @@ target triple = "x86_64-pc-linux-gnu"
 @__dfsan_track_origins = weak_odr constant i32 0
 @0 = private unnamed_addr constant [7 x i8] c"printf\00", align 1
 @implicit.variable.name = private unnamed_addr constant [2 x i8] c"x\00", align 1
-@implicit.variable.name.1 = private unnamed_addr constant [2 x i8] c"x\00", align 1
+@implicit.variable.name.1 = private unnamed_addr constant [2 x i8] c"z\00", align 1
 @implicit.variable.name.2 = private unnamed_addr constant [2 x i8] c"y\00", align 1
-@implicit.variable.name.3 = private unnamed_addr constant [2 x i8] c"z\00", align 1
+@implicit.variable.name.3 = private unnamed_addr constant [2 x i8] c"y\00", align 1
 @implicit.variable.name.4 = private unnamed_addr constant [2 x i8] c"z\00", align 1
-@implicit.variable.name.5 = private unnamed_addr constant [2 x i8] c"x\00", align 1
-@implicit.variable.name.6 = private unnamed_addr constant [2 x i8] c"y\00", align 1
+@implicit.variable.name.5 = private unnamed_addr constant [2 x i8] c"y\00", align 1
+@implicit.variable.name.6 = private unnamed_addr constant [2 x i8] c"x\00", align 1
+@implicit.variable.name.7 = private unnamed_addr constant [2 x i8] c"z\00", align 1
 
 ; Function Attrs: noinline nounwind uwtable
 define dso_local i32 @main() #0 !dbg !20 {
@@ -93,16 +94,24 @@ define dso_local i32 @main() #0 !dbg !20 {
   %43 = trunc i32 %42 to i8, !dbg !43
   %44 = load i32, ptr %3, align 4, !dbg !43
   %45 = icmp ne i32 %44, 0, !dbg !43
+  call void @dfsan_add_label(i8 %43, ptr %5, i64 4), !dbg !43
+  %implicit.final.label = call i8 @dfsan_read_label(ptr %5, i64 4), !dbg !43
+  call void @__implicit_branch_callback(i8 %43, i8 %implicit.final.label, i32 27, i32 9, ptr @implicit.variable.name), !dbg !43
+  call void @dfsan_add_label(i8 %43, ptr %7, i64 4), !dbg !43
+  %implicit.final.label1 = call i8 @dfsan_read_label(ptr %7, i64 4), !dbg !43
+  call void @__implicit_branch_callback(i8 %43, i8 %implicit.final.label1, i32 27, i32 9, ptr @implicit.variable.name.1), !dbg !43
+  call void @dfsan_add_label(i8 %43, ptr %6, i64 4), !dbg !43
+  %implicit.final.label2 = call i8 @dfsan_read_label(ptr %6, i64 4), !dbg !43
+  call void @__implicit_branch_callback(i8 %43, i8 %implicit.final.label2, i32 27, i32 9, ptr @implicit.variable.name.2), !dbg !43
   br i1 %45, label %46, label %70, !dbg !43
 
 46:                                               ; preds = %0
-  call void @__implicit_enter(i32 0, i8 %43), !dbg !45
   %47 = ptrtoint ptr %5 to i64, !dbg !45
   %48 = xor i64 %47, 87960930222080, !dbg !45
   %49 = inttoptr i64 %48 to ptr, !dbg !45
   store i32 0, ptr %49, align 1, !dbg !45
   store i32 10, ptr %5, align 4, !dbg !45
-  call void @__implicit_store_callback(ptr %5, i64 4, i32 37, i32 11, ptr @implicit.variable.name.1), !dbg !47
+  call void @dfsan_add_label(i8 %43, ptr %5, i64 4), !dbg !47
   %50 = ptrtoint ptr %4 to i64, !dbg !47
   %51 = xor i64 %50, 87960930222080, !dbg !47
   %52 = inttoptr i64 %51 to ptr, !dbg !47
@@ -114,34 +123,38 @@ define dso_local i32 @main() #0 !dbg !20 {
   %58 = trunc i32 %57 to i8, !dbg !47
   %59 = load i32, ptr %4, align 4, !dbg !47
   %60 = icmp ne i32 %59, 0, !dbg !47
+  call void @dfsan_add_label(i8 %58, ptr %6, i64 4), !dbg !47
+  %implicit.final.label3 = call i8 @dfsan_read_label(ptr %6, i64 4), !dbg !47
+  call void @__implicit_branch_callback(i8 %58, i8 %implicit.final.label3, i32 31, i32 14, ptr @implicit.variable.name.3), !dbg !47
+  call void @dfsan_add_label(i8 %58, ptr %7, i64 4), !dbg !47
+  %implicit.final.label4 = call i8 @dfsan_read_label(ptr %7, i64 4), !dbg !47
+  call void @__implicit_branch_callback(i8 %58, i8 %implicit.final.label4, i32 31, i32 14, ptr @implicit.variable.name.4), !dbg !47
   br i1 %60, label %61, label %65, !dbg !47
 
 61:                                               ; preds = %46
-  call void @__implicit_enter(i32 1, i8 %58), !dbg !49
   %62 = ptrtoint ptr %6 to i64, !dbg !49
   %63 = xor i64 %62, 87960930222080, !dbg !49
   %64 = inttoptr i64 %63 to ptr, !dbg !49
   store i32 0, ptr %64, align 1, !dbg !49
   store i32 20, ptr %6, align 4, !dbg !49
-  call void @__implicit_store_callback(ptr %6, i64 4, i32 40, i32 15, ptr @implicit.variable.name.2), !dbg !51
+  call void @dfsan_add_label(i8 %43, ptr %6, i64 4), !dbg !51
+  call void @dfsan_add_label(i8 %58, ptr %6, i64 4), !dbg !51
   br label %69, !dbg !51
 
 65:                                               ; preds = %46
-  call void @__implicit_enter(i32 1, i8 %58), !dbg !52
   %66 = ptrtoint ptr %7 to i64, !dbg !52
   %67 = xor i64 %66, 87960930222080, !dbg !52
   %68 = inttoptr i64 %67 to ptr, !dbg !52
   store i32 0, ptr %68, align 1, !dbg !52
   store i32 30, ptr %7, align 4, !dbg !52
-  call void @__implicit_store_callback(ptr %7, i64 4, i32 42, i32 15, ptr @implicit.variable.name.4)
+  call void @dfsan_add_label(i8 %43, ptr %7, i64 4)
+  call void @dfsan_add_label(i8 %58, ptr %7, i64 4)
   br label %69
 
 69:                                               ; preds = %65, %61
-  call void @__implicit_leave(i32 1), !dbg !54
-  br label %97, !dbg !54
+  br label %94, !dbg !54
 
 70:                                               ; preds = %0
-  call void @__implicit_enter(i32 0, i8 %43), !dbg !55
   %71 = ptrtoint ptr %4 to i64, !dbg !55
   %72 = xor i64 %71, 87960930222080, !dbg !55
   %73 = inttoptr i64 %72 to ptr, !dbg !55
@@ -153,130 +166,132 @@ define dso_local i32 @main() #0 !dbg !20 {
   %79 = trunc i32 %78 to i8, !dbg !55
   %80 = load i32, ptr %4, align 4, !dbg !55
   %81 = icmp ne i32 %80, 0, !dbg !55
-  br i1 %81, label %82, label %89, !dbg !55
+  call void @dfsan_add_label(i8 %79, ptr %6, i64 4), !dbg !55
+  %implicit.final.label5 = call i8 @dfsan_read_label(ptr %6, i64 4), !dbg !55
+  call void @__implicit_branch_callback(i8 %79, i8 %implicit.final.label5, i32 37, i32 16, ptr @implicit.variable.name.5), !dbg !55
+  call void @dfsan_add_label(i8 %79, ptr %5, i64 4), !dbg !55
+  %implicit.final.label6 = call i8 @dfsan_read_label(ptr %5, i64 4), !dbg !55
+  call void @__implicit_branch_callback(i8 %79, i8 %implicit.final.label6, i32 37, i32 16, ptr @implicit.variable.name.6), !dbg !55
+  call void @dfsan_add_label(i8 %79, ptr %7, i64 4), !dbg !55
+  %implicit.final.label7 = call i8 @dfsan_read_label(ptr %7, i64 4), !dbg !55
+  call void @__implicit_branch_callback(i8 %79, i8 %implicit.final.label7, i32 37, i32 16, ptr @implicit.variable.name.7), !dbg !55
+  br i1 %81, label %82, label %86, !dbg !55
 
 82:                                               ; preds = %70
-  call void @__implicit_enter(i32 2, i8 %79), !dbg !57
-  %83 = ptrtoint ptr %5 to i64, !dbg !57
+  %83 = ptrtoint ptr %6 to i64, !dbg !57
   %84 = xor i64 %83, 87960930222080, !dbg !57
   %85 = inttoptr i64 %84 to ptr, !dbg !57
   store i32 0, ptr %85, align 1, !dbg !57
-  store i32 10, ptr %5, align 4, !dbg !57
-  call void @__implicit_store_callback(ptr %5, i64 4, i32 46, i32 11, ptr @implicit.variable.name), !dbg !59
-  %86 = ptrtoint ptr %6 to i64, !dbg !59
-  %87 = xor i64 %86, 87960930222080, !dbg !59
-  %88 = inttoptr i64 %87 to ptr, !dbg !59
-  store i32 0, ptr %88, align 1, !dbg !59
-  store i32 40, ptr %6, align 4, !dbg !59
-  call void @__implicit_store_callback(ptr %6, i64 4, i32 47, i32 11, ptr @implicit.variable.name.6), !dbg !60
-  br label %96, !dbg !60
+  store i32 40, ptr %6, align 4, !dbg !57
+  call void @dfsan_add_label(i8 %43, ptr %6, i64 4), !dbg !59
+  call void @dfsan_add_label(i8 %79, ptr %6, i64 4), !dbg !59
+  br label %93, !dbg !59
 
-89:                                               ; preds = %70
-  call void @__implicit_enter(i32 2, i8 %79), !dbg !61
-  %90 = ptrtoint ptr %5 to i64, !dbg !61
-  %91 = xor i64 %90, 87960930222080, !dbg !61
-  %92 = inttoptr i64 %91 to ptr, !dbg !61
-  store i32 0, ptr %92, align 1, !dbg !61
-  store i32 10, ptr %5, align 4, !dbg !61
-  call void @__implicit_store_callback(ptr %5, i64 4, i32 50, i32 11, ptr @implicit.variable.name.5), !dbg !63
-  %93 = ptrtoint ptr %7 to i64, !dbg !63
-  %94 = xor i64 %93, 87960930222080, !dbg !63
-  %95 = inttoptr i64 %94 to ptr, !dbg !63
-  store i32 0, ptr %95, align 1, !dbg !63
-  store i32 50, ptr %7, align 4, !dbg !63
-  call void @__implicit_store_callback(ptr %7, i64 4, i32 51, i32 11, ptr @implicit.variable.name.3)
-  br label %96
+86:                                               ; preds = %70
+  %87 = ptrtoint ptr %5 to i64, !dbg !60
+  %88 = xor i64 %87, 87960930222080, !dbg !60
+  %89 = inttoptr i64 %88 to ptr, !dbg !60
+  store i32 0, ptr %89, align 1, !dbg !60
+  store i32 10, ptr %5, align 4, !dbg !60
+  call void @dfsan_add_label(i8 %43, ptr %5, i64 4), !dbg !62
+  call void @dfsan_add_label(i8 %79, ptr %5, i64 4), !dbg !62
+  %90 = ptrtoint ptr %7 to i64, !dbg !62
+  %91 = xor i64 %90, 87960930222080, !dbg !62
+  %92 = inttoptr i64 %91 to ptr, !dbg !62
+  store i32 0, ptr %92, align 1, !dbg !62
+  store i32 50, ptr %7, align 4, !dbg !62
+  call void @dfsan_add_label(i8 %43, ptr %7, i64 4)
+  call void @dfsan_add_label(i8 %79, ptr %7, i64 4)
+  br label %93
 
-96:                                               ; preds = %89, %82
-  call void @__implicit_leave(i32 2)
-  br label %97
+93:                                               ; preds = %86, %82
+  br label %94
 
-97:                                               ; preds = %96, %69
-  call void @__implicit_leave(i32 0), !dbg !64
-  %98 = ptrtoint ptr %5 to i64, !dbg !64
-  %99 = xor i64 %98, 87960930222080, !dbg !64
-  %100 = inttoptr i64 %99 to ptr, !dbg !64
-  %101 = load i32, ptr %100, align 1, !dbg !64
-  %102 = lshr i32 %101, 16, !dbg !64
-  %103 = or i32 %101, %102, !dbg !64
-  %104 = lshr i32 %103, 8, !dbg !64
-  %105 = or i32 %103, %104, !dbg !64
-  %106 = trunc i32 %105 to i8, !dbg !64
-  %107 = load i32, ptr %5, align 4, !dbg !64
-  %108 = ptrtoint ptr %8 to i64, !dbg !65
-  %109 = xor i64 %108, 87960930222080, !dbg !65
-  %110 = inttoptr i64 %109 to ptr, !dbg !65
-  %111 = getelementptr i8, ptr %110, i32 0, !dbg !65
-  store i8 %106, ptr %111, align 1, !dbg !65
-  %112 = getelementptr i8, ptr %110, i32 1, !dbg !65
-  store i8 %106, ptr %112, align 1, !dbg !65
-  %113 = getelementptr i8, ptr %110, i32 2, !dbg !65
-  store i8 %106, ptr %113, align 1, !dbg !65
-  %114 = getelementptr i8, ptr %110, i32 3, !dbg !65
-  store i8 %106, ptr %114, align 1, !dbg !65
-  store i32 %107, ptr %8, align 4, !dbg !65
-  %115 = ptrtoint ptr %6 to i64, !dbg !66
-  %116 = xor i64 %115, 87960930222080, !dbg !66
-  %117 = inttoptr i64 %116 to ptr, !dbg !66
-  %118 = load i32, ptr %117, align 1, !dbg !66
-  %119 = lshr i32 %118, 16, !dbg !66
-  %120 = or i32 %118, %119, !dbg !66
-  %121 = lshr i32 %120, 8, !dbg !66
-  %122 = or i32 %120, %121, !dbg !66
-  %123 = trunc i32 %122 to i8, !dbg !66
-  %124 = load i32, ptr %6, align 4, !dbg !66
-  %125 = ptrtoint ptr %9 to i64, !dbg !67
-  %126 = xor i64 %125, 87960930222080, !dbg !67
-  %127 = inttoptr i64 %126 to ptr, !dbg !67
-  %128 = getelementptr i8, ptr %127, i32 0, !dbg !67
-  store i8 %123, ptr %128, align 1, !dbg !67
-  %129 = getelementptr i8, ptr %127, i32 1, !dbg !67
-  store i8 %123, ptr %129, align 1, !dbg !67
-  %130 = getelementptr i8, ptr %127, i32 2, !dbg !67
-  store i8 %123, ptr %130, align 1, !dbg !67
-  %131 = getelementptr i8, ptr %127, i32 3, !dbg !67
-  store i8 %123, ptr %131, align 1, !dbg !67
-  store i32 %124, ptr %9, align 4, !dbg !67
-  %132 = ptrtoint ptr %7 to i64, !dbg !68
-  %133 = xor i64 %132, 87960930222080, !dbg !68
-  %134 = inttoptr i64 %133 to ptr, !dbg !68
-  %135 = load i32, ptr %134, align 1, !dbg !68
-  %136 = lshr i32 %135, 16, !dbg !68
-  %137 = or i32 %135, %136, !dbg !68
-  %138 = lshr i32 %137, 8, !dbg !68
-  %139 = or i32 %137, %138, !dbg !68
-  %140 = trunc i32 %139 to i8, !dbg !68
-  %141 = load i32, ptr %7, align 4, !dbg !68
-  %142 = ptrtoint ptr %10 to i64, !dbg !69
-  %143 = xor i64 %142, 87960930222080, !dbg !69
-  %144 = inttoptr i64 %143 to ptr, !dbg !69
-  %145 = getelementptr i8, ptr %144, i32 0, !dbg !69
-  store i8 %140, ptr %145, align 1, !dbg !69
-  %146 = getelementptr i8, ptr %144, i32 1, !dbg !69
-  store i8 %140, ptr %146, align 1, !dbg !69
-  %147 = getelementptr i8, ptr %144, i32 2, !dbg !69
-  store i8 %140, ptr %147, align 1, !dbg !69
-  %148 = getelementptr i8, ptr %144, i32 3, !dbg !69
-  store i8 %140, ptr %148, align 1, !dbg !69
-  store i32 %141, ptr %10, align 4, !dbg !69
-  %149 = call zeroext i8 @dfsan_read_label(ptr noundef %3, i64 noundef 4), !dbg !70
-  %150 = zext i8 %149 to i32, !dbg !71
-  %151 = call zeroext i8 @dfsan_read_label(ptr noundef %4, i64 noundef 4), !dbg !72
-  %152 = zext i8 %151 to i32, !dbg !73
-  %153 = call zeroext i8 @dfsan_read_label(ptr noundef %5, i64 noundef 4), !dbg !74
-  %154 = zext i8 %153 to i32, !dbg !75
-  %155 = call zeroext i8 @dfsan_read_label(ptr noundef %6, i64 noundef 4), !dbg !76
-  %156 = zext i8 %155 to i32, !dbg !77
-  %157 = call zeroext i8 @dfsan_read_label(ptr noundef %7, i64 noundef 4), !dbg !78
-  %158 = zext i8 %157 to i32, !dbg !79
-  %159 = call zeroext i8 @dfsan_read_label(ptr noundef %8, i64 noundef 4), !dbg !80
-  %160 = zext i8 %159 to i32, !dbg !81
-  %161 = call zeroext i8 @dfsan_read_label(ptr noundef %9, i64 noundef 4), !dbg !82
-  %162 = zext i8 %161 to i32, !dbg !83
-  %163 = call zeroext i8 @dfsan_read_label(ptr noundef %10, i64 noundef 4), !dbg !84
-  %164 = zext i8 %163 to i32, !dbg !85
-  %165 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %150, i32 noundef %152, i32 noundef %154, i32 noundef %156, i32 noundef %158, i32 noundef %160, i32 noundef %162, i32 noundef %164), !dbg !86
-  ret i32 0, !dbg !87
+94:                                               ; preds = %93, %69
+  %95 = ptrtoint ptr %5 to i64, !dbg !63
+  %96 = xor i64 %95, 87960930222080, !dbg !63
+  %97 = inttoptr i64 %96 to ptr, !dbg !63
+  %98 = load i32, ptr %97, align 1, !dbg !63
+  %99 = lshr i32 %98, 16, !dbg !63
+  %100 = or i32 %98, %99, !dbg !63
+  %101 = lshr i32 %100, 8, !dbg !63
+  %102 = or i32 %100, %101, !dbg !63
+  %103 = trunc i32 %102 to i8, !dbg !63
+  %104 = load i32, ptr %5, align 4, !dbg !63
+  %105 = ptrtoint ptr %8 to i64, !dbg !64
+  %106 = xor i64 %105, 87960930222080, !dbg !64
+  %107 = inttoptr i64 %106 to ptr, !dbg !64
+  %108 = getelementptr i8, ptr %107, i32 0, !dbg !64
+  store i8 %103, ptr %108, align 1, !dbg !64
+  %109 = getelementptr i8, ptr %107, i32 1, !dbg !64
+  store i8 %103, ptr %109, align 1, !dbg !64
+  %110 = getelementptr i8, ptr %107, i32 2, !dbg !64
+  store i8 %103, ptr %110, align 1, !dbg !64
+  %111 = getelementptr i8, ptr %107, i32 3, !dbg !64
+  store i8 %103, ptr %111, align 1, !dbg !64
+  store i32 %104, ptr %8, align 4, !dbg !64
+  %112 = ptrtoint ptr %6 to i64, !dbg !65
+  %113 = xor i64 %112, 87960930222080, !dbg !65
+  %114 = inttoptr i64 %113 to ptr, !dbg !65
+  %115 = load i32, ptr %114, align 1, !dbg !65
+  %116 = lshr i32 %115, 16, !dbg !65
+  %117 = or i32 %115, %116, !dbg !65
+  %118 = lshr i32 %117, 8, !dbg !65
+  %119 = or i32 %117, %118, !dbg !65
+  %120 = trunc i32 %119 to i8, !dbg !65
+  %121 = load i32, ptr %6, align 4, !dbg !65
+  %122 = ptrtoint ptr %9 to i64, !dbg !66
+  %123 = xor i64 %122, 87960930222080, !dbg !66
+  %124 = inttoptr i64 %123 to ptr, !dbg !66
+  %125 = getelementptr i8, ptr %124, i32 0, !dbg !66
+  store i8 %120, ptr %125, align 1, !dbg !66
+  %126 = getelementptr i8, ptr %124, i32 1, !dbg !66
+  store i8 %120, ptr %126, align 1, !dbg !66
+  %127 = getelementptr i8, ptr %124, i32 2, !dbg !66
+  store i8 %120, ptr %127, align 1, !dbg !66
+  %128 = getelementptr i8, ptr %124, i32 3, !dbg !66
+  store i8 %120, ptr %128, align 1, !dbg !66
+  store i32 %121, ptr %9, align 4, !dbg !66
+  %129 = ptrtoint ptr %7 to i64, !dbg !67
+  %130 = xor i64 %129, 87960930222080, !dbg !67
+  %131 = inttoptr i64 %130 to ptr, !dbg !67
+  %132 = load i32, ptr %131, align 1, !dbg !67
+  %133 = lshr i32 %132, 16, !dbg !67
+  %134 = or i32 %132, %133, !dbg !67
+  %135 = lshr i32 %134, 8, !dbg !67
+  %136 = or i32 %134, %135, !dbg !67
+  %137 = trunc i32 %136 to i8, !dbg !67
+  %138 = load i32, ptr %7, align 4, !dbg !67
+  %139 = ptrtoint ptr %10 to i64, !dbg !68
+  %140 = xor i64 %139, 87960930222080, !dbg !68
+  %141 = inttoptr i64 %140 to ptr, !dbg !68
+  %142 = getelementptr i8, ptr %141, i32 0, !dbg !68
+  store i8 %137, ptr %142, align 1, !dbg !68
+  %143 = getelementptr i8, ptr %141, i32 1, !dbg !68
+  store i8 %137, ptr %143, align 1, !dbg !68
+  %144 = getelementptr i8, ptr %141, i32 2, !dbg !68
+  store i8 %137, ptr %144, align 1, !dbg !68
+  %145 = getelementptr i8, ptr %141, i32 3, !dbg !68
+  store i8 %137, ptr %145, align 1, !dbg !68
+  store i32 %138, ptr %10, align 4, !dbg !68
+  %146 = call zeroext i8 @dfsan_read_label(ptr noundef %3, i64 noundef 4), !dbg !69
+  %147 = zext i8 %146 to i32, !dbg !70
+  %148 = call zeroext i8 @dfsan_read_label(ptr noundef %4, i64 noundef 4), !dbg !71
+  %149 = zext i8 %148 to i32, !dbg !72
+  %150 = call zeroext i8 @dfsan_read_label(ptr noundef %5, i64 noundef 4), !dbg !73
+  %151 = zext i8 %150 to i32, !dbg !74
+  %152 = call zeroext i8 @dfsan_read_label(ptr noundef %6, i64 noundef 4), !dbg !75
+  %153 = zext i8 %152 to i32, !dbg !76
+  %154 = call zeroext i8 @dfsan_read_label(ptr noundef %7, i64 noundef 4), !dbg !77
+  %155 = zext i8 %154 to i32, !dbg !78
+  %156 = call zeroext i8 @dfsan_read_label(ptr noundef %8, i64 noundef 4), !dbg !79
+  %157 = zext i8 %156 to i32, !dbg !80
+  %158 = call zeroext i8 @dfsan_read_label(ptr noundef %9, i64 noundef 4), !dbg !81
+  %159 = zext i8 %158 to i32, !dbg !82
+  %160 = call zeroext i8 @dfsan_read_label(ptr noundef %10, i64 noundef 4), !dbg !83
+  %161 = zext i8 %160 to i32, !dbg !84
+  %162 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %147, i32 noundef %149, i32 noundef %151, i32 noundef %153, i32 noundef %155, i32 noundef %157, i32 noundef %159, i32 noundef %161), !dbg !85
+  ret i32 0, !dbg !86
 }
 
 declare void @dfsan_set_label(i8 noundef zeroext, ptr noundef, i64 noundef) #1
@@ -352,11 +367,9 @@ define linkonce_odr zeroext i8 @"dfsw$dfsan_read_label"(ptr noundef %0, i64 noun
   ret i8 %3
 }
 
-declare void @__implicit_enter(i32, i8)
+declare void @dfsan_add_label(i8, ptr, i64)
 
-declare void @__implicit_leave(i32)
-
-declare void @__implicit_store_callback(ptr, i64, i32, i32, ptr)
+declare void @__implicit_branch_callback(i8, i8, i32, i32, ptr)
 
 attributes #0 = { noinline nounwind uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 attributes #1 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
@@ -367,8 +380,8 @@ attributes #2 = { nounwind memory(read) }
 !llvm.ident = !{!19}
 
 !0 = !DIGlobalVariableExpression(var: !1, expr: !DIExpression())
-!1 = distinct !DIGlobalVariable(scope: null, file: !2, line: 59, type: !3, isLocal: true, isDefinition: true)
-!2 = !DIFile(filename: "test.c", directory: "/home/anirban2005/dfsan/implicit_taint_propagation", checksumkind: CSK_MD5, checksum: "91f3ea1201c664e0cb7ba70cc9832450")
+!1 = distinct !DIGlobalVariable(scope: null, file: !2, line: 51, type: !3, isLocal: true, isDefinition: true)
+!2 = !DIFile(filename: "test.c", directory: "/home/anirban2005/dfsan/implicit_taint_propagation", checksumkind: CSK_MD5, checksum: "753553b135a39b124eb9ec6ee6ebf87c")
 !3 = !DICompositeType(tag: DW_TAG_array_type, baseType: !4, size: 840, elements: !5)
 !4 = !DIBasicType(name: "char", size: 8, encoding: DW_ATE_signed_char)
 !5 = !{!6}
@@ -409,48 +422,47 @@ attributes #2 = { nounwind memory(read) }
 !40 = !DILocation(line: 24, column: 9, scope: !20)
 !41 = !DILocalVariable(name: "c", scope: !20, file: !2, line: 25, type: !23)
 !42 = !DILocation(line: 25, column: 9, scope: !20)
-!43 = !DILocation(line: 35, column: 9, scope: !44)
-!44 = distinct !DILexicalBlock(scope: !20, file: !2, line: 35, column: 9)
-!45 = !DILocation(line: 37, column: 11, scope: !46)
-!46 = distinct !DILexicalBlock(scope: !44, file: !2, line: 35, column: 18)
-!47 = !DILocation(line: 39, column: 13, scope: !48)
-!48 = distinct !DILexicalBlock(scope: !46, file: !2, line: 39, column: 13)
-!49 = !DILocation(line: 40, column: 15, scope: !50)
-!50 = distinct !DILexicalBlock(scope: !48, file: !2, line: 39, column: 22)
-!51 = !DILocation(line: 41, column: 9, scope: !50)
-!52 = !DILocation(line: 42, column: 15, scope: !53)
-!53 = distinct !DILexicalBlock(scope: !48, file: !2, line: 41, column: 16)
-!54 = !DILocation(line: 45, column: 5, scope: !46)
-!55 = !DILocation(line: 45, column: 16, scope: !56)
-!56 = distinct !DILexicalBlock(scope: !44, file: !2, line: 45, column: 16)
-!57 = !DILocation(line: 46, column: 11, scope: !58)
-!58 = distinct !DILexicalBlock(scope: !56, file: !2, line: 45, column: 25)
-!59 = !DILocation(line: 47, column: 11, scope: !58)
-!60 = !DILocation(line: 49, column: 5, scope: !58)
-!61 = !DILocation(line: 50, column: 11, scope: !62)
-!62 = distinct !DILexicalBlock(scope: !56, file: !2, line: 49, column: 12)
-!63 = !DILocation(line: 51, column: 11, scope: !62)
-!64 = !DILocation(line: 54, column: 9, scope: !20)
-!65 = !DILocation(line: 54, column: 7, scope: !20)
-!66 = !DILocation(line: 55, column: 9, scope: !20)
-!67 = !DILocation(line: 55, column: 7, scope: !20)
-!68 = !DILocation(line: 56, column: 9, scope: !20)
-!69 = !DILocation(line: 56, column: 7, scope: !20)
-!70 = !DILocation(line: 68, column: 19, scope: !20)
-!71 = !DILocation(line: 68, column: 9, scope: !20)
-!72 = !DILocation(line: 72, column: 19, scope: !20)
-!73 = !DILocation(line: 72, column: 9, scope: !20)
-!74 = !DILocation(line: 76, column: 19, scope: !20)
-!75 = !DILocation(line: 76, column: 9, scope: !20)
-!76 = !DILocation(line: 80, column: 19, scope: !20)
-!77 = !DILocation(line: 80, column: 9, scope: !20)
-!78 = !DILocation(line: 84, column: 19, scope: !20)
-!79 = !DILocation(line: 84, column: 9, scope: !20)
-!80 = !DILocation(line: 88, column: 19, scope: !20)
-!81 = !DILocation(line: 88, column: 9, scope: !20)
-!82 = !DILocation(line: 92, column: 19, scope: !20)
-!83 = !DILocation(line: 92, column: 9, scope: !20)
-!84 = !DILocation(line: 96, column: 19, scope: !20)
-!85 = !DILocation(line: 96, column: 9, scope: !20)
-!86 = !DILocation(line: 58, column: 5, scope: !20)
-!87 = !DILocation(line: 101, column: 5, scope: !20)
+!43 = !DILocation(line: 27, column: 9, scope: !44)
+!44 = distinct !DILexicalBlock(scope: !20, file: !2, line: 27, column: 9)
+!45 = !DILocation(line: 29, column: 11, scope: !46)
+!46 = distinct !DILexicalBlock(scope: !44, file: !2, line: 27, column: 18)
+!47 = !DILocation(line: 31, column: 14, scope: !48)
+!48 = distinct !DILexicalBlock(scope: !46, file: !2, line: 31, column: 14)
+!49 = !DILocation(line: 32, column: 15, scope: !50)
+!50 = distinct !DILexicalBlock(scope: !48, file: !2, line: 31, column: 23)
+!51 = !DILocation(line: 33, column: 9, scope: !50)
+!52 = !DILocation(line: 34, column: 15, scope: !53)
+!53 = distinct !DILexicalBlock(scope: !48, file: !2, line: 33, column: 16)
+!54 = !DILocation(line: 37, column: 5, scope: !46)
+!55 = !DILocation(line: 37, column: 16, scope: !56)
+!56 = distinct !DILexicalBlock(scope: !44, file: !2, line: 37, column: 16)
+!57 = !DILocation(line: 39, column: 11, scope: !58)
+!58 = distinct !DILexicalBlock(scope: !56, file: !2, line: 37, column: 25)
+!59 = !DILocation(line: 41, column: 5, scope: !58)
+!60 = !DILocation(line: 42, column: 11, scope: !61)
+!61 = distinct !DILexicalBlock(scope: !56, file: !2, line: 41, column: 12)
+!62 = !DILocation(line: 43, column: 11, scope: !61)
+!63 = !DILocation(line: 46, column: 9, scope: !20)
+!64 = !DILocation(line: 46, column: 7, scope: !20)
+!65 = !DILocation(line: 47, column: 9, scope: !20)
+!66 = !DILocation(line: 47, column: 7, scope: !20)
+!67 = !DILocation(line: 48, column: 9, scope: !20)
+!68 = !DILocation(line: 48, column: 7, scope: !20)
+!69 = !DILocation(line: 60, column: 19, scope: !20)
+!70 = !DILocation(line: 60, column: 9, scope: !20)
+!71 = !DILocation(line: 64, column: 19, scope: !20)
+!72 = !DILocation(line: 64, column: 9, scope: !20)
+!73 = !DILocation(line: 68, column: 19, scope: !20)
+!74 = !DILocation(line: 68, column: 9, scope: !20)
+!75 = !DILocation(line: 72, column: 19, scope: !20)
+!76 = !DILocation(line: 72, column: 9, scope: !20)
+!77 = !DILocation(line: 76, column: 19, scope: !20)
+!78 = !DILocation(line: 76, column: 9, scope: !20)
+!79 = !DILocation(line: 80, column: 19, scope: !20)
+!80 = !DILocation(line: 80, column: 9, scope: !20)
+!81 = !DILocation(line: 84, column: 19, scope: !20)
+!82 = !DILocation(line: 84, column: 9, scope: !20)
+!83 = !DILocation(line: 88, column: 19, scope: !20)
+!84 = !DILocation(line: 88, column: 9, scope: !20)
+!85 = !DILocation(line: 50, column: 5, scope: !20)
+!86 = !DILocation(line: 93, column: 5, scope: !20)
