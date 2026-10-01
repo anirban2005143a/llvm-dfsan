@@ -1,15 +1,14 @@
-rm -f FindTaintedCondition.so
+rm -f ImplicitTaintPropagation.so
 rm -f dfsan.ll
 rm -f instrumented.ll
-rm -f implicit_runtime.o
 rm -f implicit_test
 
 clang++ \
   -std=c++17 \
   -fPIC \
   -shared \
-  FindTaintedCondition.cpp \
-  -o FindTaintedCondition.so \
+  ImplicitTaintPropagation.cpp \
+  -o ImplicitTaintPropagation.so \
   $(llvm-config \
     --cxxflags \
     --ldflags \
@@ -28,23 +27,23 @@ clang \
   -o dfsan.ll
 
 opt \
-  -load-pass-plugin=./FindTaintedCondition.so \
+  -load-pass-plugin=./ImplicitTaintPropagation.so \
   -passes=implicit-taint \
   -S \
   dfsan.ll \
   -o instrumented.ll
 
-clang \
-  -fno-sanitize=dataflow \
-  -c \
-  implicit_runtime.c \
-  -o implicit_runtime.o
+DFSAN_RT="$(clang -print-resource-dir)/lib/linux/libclang_rt.dfsan-x86_64.a"
 
 clang \
-  -fsanitize=dataflow \
-  -Wno-backend-plugin \
+  -fno-sanitize=dataflow \
   instrumented.ll \
-  implicit_runtime.o \
+  "$DFSAN_RT" \
+  -pthread \
+  -lm \
+  -ldl \
+  -lrt \
+  -lresolv \
   -o implicit_test
 
 ./implicit_test
