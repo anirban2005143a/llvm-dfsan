@@ -47,3 +47,94 @@ clang \
   -o implicit_test
 
 ./implicit_test
+
+
+
+
+
+
+
+
+========================================================================================
+
+
+
+cd ~/dfsan/implicit_taint_propagation
+
+rm -f FindTaintedCondition.so
+rm -f test_dfsan.ll
+rm -f instrumented.ll
+rm -f implicit_runtime.o
+rm -f test_dfsan
+rm -f observations.tsv
+rm -f taint_map.txt
+
+clang++-21 -std=c++17 -fPIC -shared \
+    FindTaintedCondition.cpp \
+    $(llvm-config-21 --cxxflags --ldflags --system-libs --libs core analysis passes transformutils) \
+    -o FindTaintedCondition.so
+
+clang-21 \
+    -O0 \
+    -g \
+    -Xclang -disable-O0-optnone \
+    -fsanitize=dataflow \
+    -mllvm -dfsan-conditional-callbacks \
+    -S \
+    -emit-llvm \
+    test.c \
+    -o test_dfsan.ll
+
+opt-21 \
+    -load-pass-plugin=./FindTaintedCondition.so \
+    -passes=implicit-taint \
+    test_dfsan.ll \
+    -S \
+    -o instrumented.ll
+
+grep -n "__implicit_branch_begin\|__implicit_branch_edge\|__implicit_join_value\|__implicit_join_end" instrumented.ll
+
+clang-21 \
+    -c \
+    implicit_runtime.c \
+    -o implicit_runtime.o
+
+clang-21 \
+    -fsanitize=dataflow \
+    -Wno-backend-plugin \
+    instrumented.ll \
+    implicit_runtime.o \
+    -o test_dfsan
+
+rm -f observations.tsv
+rm -f taint_map.txt
+
+TEST_ID=0
+
+while read -r SECRET1 SECRET2 SECRET3
+do
+    [ -z "$SECRET1" ] && continue
+
+    TEST_ID=$((TEST_ID + 1))
+
+    IMPLICIT_MODE=record \
+    IMPLICIT_TEST_ID="$TEST_ID" \
+    IMPLICIT_LOG=observations.tsv \
+    ./test_dfsan \
+        "$SECRET1" \
+        "$SECRET2" \
+        "$SECRET3" \
+        >/dev/null
+
+done < test_cases.txt
+
+python3 analyze.py \
+    observations.tsv \
+    taint_map.txt
+
+cat observations.tsv
+cat taint_map.txt
+
+IMPLICIT_MODE=apply \
+IMPLICIT_TAINT_MAP=taint_map.txt \
+./test_dfsan 1 0 0

@@ -1,23 +1,18 @@
+// FILE: test.c
+
 #include <stdio.h>
-#include <stdbool.h>
+#include <stdlib.h>
+
 #include <sanitizer/dfsan_interface.h>
 
-static void print_label(
-    const char *name,
-    const void *p,
-    size_t n)
+int main(int argc, char **argv)
 {
-    printf(
-        "%s = %u\n",
-        name,
-        (unsigned)dfsan_read_label(p, n));
-}
+    if (argc != 4)
+        return 1;
 
-int main(void)
-{
-    int secret1 = 1;
-    int secret2 = 0;
-    int secret3 = 0;
+    int secret1 = atoi(argv[1]);
+    int secret2 = atoi(argv[2]);
+    int secret3 = atoi(argv[3]);
 
     dfsan_set_label(
         1,
@@ -28,85 +23,56 @@ int main(void)
         2,
         &secret2,
         sizeof(secret2));
+
     dfsan_set_label(
         4,
         &secret3,
         sizeof(secret3));
 
+    int a = 10;
+    int b = 21;
+    int c = 5;
+
     int x = 0;
     int y = 0;
     int z = 0;
 
-    int a = 0;
-    int b = 0;
-    int c = 0;
-
-    int same = 0;
-
     if (secret1) {
-        x = 10;
+
+        x = a + b - 3;
+
     } else if (secret2) {
-        y = 40;
+
+        x = a + b;
+        y = 20;
+
     } else if (secret3) {
-        z = 40;
+
+        x = (2 * b) - a;
+
     } else {
-        z = 50;
+
+        x = c + b;
+        z = 29;
     }
 
-    if (secret1) {
-        same = 7;
-    } else {
-        same = 7;
-    }
-
-    a = x;
-    b = y;
-    c = z;
-
-    print_label(
-        "secret1",
-        &secret1,
-        sizeof(secret1));
-
-    print_label(
-        "secret2",
-        &secret2,
-        sizeof(secret2));
-
-    print_label(
-        "x",
-        &x,
-        sizeof(x));
-
-    print_label(
-        "y",
-        &y,
-        sizeof(y));
-
-    print_label(
-        "z",
-        &z,
-        sizeof(z));
-
-    print_label(
-        "a",
-        &a,
-        sizeof(a));
-
-    print_label(
-        "b",
-        &b,
-        sizeof(b));
-
-    print_label(
-        "c",
-        &c,
-        sizeof(c));
-
-    print_label(
-        "same",
-        &same,
-        sizeof(same));
+    printf(
+        "x=%d y=%d z=%d "
+        "x_label=%u "
+        "y_label=%u "
+        "z_label=%u\n",
+        x,
+        y,
+        z,
+        (unsigned)dfsan_read_label(
+            &x,
+            sizeof(x)),
+        (unsigned)dfsan_read_label(
+            &y,
+            sizeof(y)),
+        (unsigned)dfsan_read_label(
+            &z,
+            sizeof(z)));
 
     return 0;
 }
