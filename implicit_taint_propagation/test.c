@@ -13,31 +13,31 @@ int main(int argc, char **argv) {
     dfsan_set_label(2, &secret2, sizeof(secret2));
     dfsan_set_label(4, &secret3, sizeof(secret3));
 
-    int x = 0;
-    int y = 0;
-    int z = 0;
+    int p = 10;
+    int q = 0;
+    int r = 0;
 
     int a = 10;
     int b = 20;
     int c = 10;
+    int d = 10;
 
     if (secret1) {
-        x = 30;
-        a = x;
-        x = 10;
+        p = (a+b);
+        a=p;
+        p = 10;
     } else if (secret2) {
-        x = 40;
-        b = x;
-        x = 10;
-        // y = 20;
+        p = (c+b) + 10;
+        b=p;
+        p = 10;
     } else if (secret3) {
-        x = 50;
-        c = x;
-        x = 10;
-        z = 30;
+        p = (2*b)-a;
+        c=p;
+        p = 20;
     } else {
-        x = 10;
-        // z = 100;
+        p = a+c+10;
+        d=p;
+        p = 10;
     }
 
     return 0;
