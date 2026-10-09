@@ -61,27 +61,20 @@ fi
 CASE_INDEX=0
 
 while IFS= read -r LINE || [[ -n "$LINE" ]]; do
+    # Remove comments and ignore empty lines.
     LINE="${LINE%%#*}"
 
     if [[ "$LINE" =~ ^[[:space:]]*$ ]]; then
         continue
     fi
 
-    read -r SECRET1 SECRET2 SECRET3 EXTRA <<< "$LINE"
-
-    if [[ -z "${SECRET1:-}" ||
-          -z "${SECRET2:-}" ||
-          -z "${SECRET3:-}" ||
-          -n "${EXTRA:-}" ]]; then
-        echo "error: invalid test case: $LINE" >&2
-        echo "expected exactly 3 values: secret1 secret2 secret3" >&2
-        exit 1
-    fi
+    # Dynamically read all values from the current test case.
+    read -r -a INPUT_VALUES <<< "$LINE"
 
     TRACE_FILE="$TRACE_DIR/case_${CASE_INDEX}.trace"
 
     if ! IMPLICIT_TRACE_FILE="$TRACE_FILE" \
-        "$BUILD/implicit_test" "$SECRET1" "$SECRET2" "$SECRET3" \
+        "$BUILD/implicit_test" "${INPUT_VALUES[@]}" \
         >"$BUILD/case_${CASE_INDEX}.stdout" \
         2>"$BUILD/case_${CASE_INDEX}.stderr"; then
         cat "$BUILD/case_${CASE_INDEX}.stderr" >&2
