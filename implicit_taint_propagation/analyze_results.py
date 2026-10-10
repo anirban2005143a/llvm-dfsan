@@ -7,6 +7,7 @@ import sys
 
 # O|branch_id|outcome|context_label|flags|size|scope|name|value_hex
 # F|flags|size|explicit_label|scope|name|value_hex
+# Planned labels: branch_id|label|scope|name
 
 
 def read_traces(trace_dir: pathlib.Path):
@@ -37,9 +38,7 @@ def read_traces(trace_dir: pathlib.Path):
                     name = parts[7]
                     value = parts[8]
 
-                    if scope != "main":
-                        continue
-                    if flags & 1:
+                    if scope != "main" or (flags & 1):
                         continue
 
                     key = (scope, name, branch_id)
@@ -76,44 +75,119 @@ def outcome_sets_differ(outcomes):
     return any(current != first for current in sets[1:])
 
 
-def analyze(trace_dir: pathlib.Path):
-    final_records, observations, branch_context_labels = read_traces(trace_dir)
+def explicit_labels_by_variable(final_records):
+    labels = collections.defaultdict(int)
+    for key, records in final_records.items():
+        for _flags, _size, label, _value in records:
+            labels[key] |= label
+    return labels
 
-    implicit_labels = collections.defaultdict(int)
+
+def build_label_plan(trace_dir: pathlib.Path, plan_path: pathlib.Path):
+    final_records, observations, branch_context_labels = read_traces(trace_dir)
+    explicit_labels = explicit_labels_by_variable(final_records)
+    planned = collections.defaultdict(int)
 
     for (scope, name, branch_id), outcomes in observations.items():
         if not outcome_sets_differ(outcomes):
             continue
 
-        implicit_labels[(scope, name)] |= branch_context_labels[branch_id]
+        # Keep the original rule: infer implicit labels only for variables
+        # whose ordinary DFSan label is zero at program exit in the discovery pass.
+        if explicit_labels[(scope, name)] != 0:
+            continue
 
+        label = branch_context_labels[branch_id]
+        if label == 0:
+            continue
+
+        planned[(branch_id, scope, name)] |= label
+
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    with plan_path.open("w", encoding="utf-8") as fp:
+        for (branch_id, scope, name), label in sorted(planned.items()):
+            fp.write(f"{branch_id}|{label}|{scope}|{name}\n")
+
+
+def analyze_final(trace_dir: pathlib.Path):
+    final_records, _observations, _branch_context_labels = read_traces(trace_dir)
     results = []
 
-    for key, records in final_records.items():
-        scope, name = key
-        explicit_label = 0
-        flags = records[-1][0]
-
+    for (scope, name), records in final_records.items():
+        label = 0
+        flags = 0
         for record_flags, _size, record_label, _value in records:
             flags |= record_flags
-            explicit_label |= record_label
-
-        # Explicitly tainted variables keep their DFSan label. Implicit
-        # variation analysis is only for variables that are not data-tainted.
-        if explicit_label != 0:
-            label = explicit_label
-        else:
-            label = implicit_labels[key]
-
+            label |= record_label
         results.append((scope, name, label, flags))
 
     results.sort(key=lambda item: (item[0], item[1]))
     return results
 
 
+def analyze_discovery(trace_dir: pathlib.Path):
+    final_records, observations, branch_context_labels = read_traces(trace_dir)
+    implicit_labels = collections.defaultdict(int)
+
+    for (scope, name, branch_id), outcomes in observations.items():
+        if outcome_sets_differ(outcomes):
+            implicit_labels[(scope, name)] |= branch_context_labels[branch_id]
+
+    results = []
+    for key, records in final_records.items():
+        scope, name = key
+        explicit_label = 0
+        flags = 0
+
+        for record_flags, _size, record_label, _value in records:
+            flags |= record_flags
+            explicit_label |= record_label
+
+        label = explicit_label if explicit_label != 0 else implicit_labels[key]
+        results.append((scope, name, label, flags))
+
+    results.sort(key=lambda item: (item[0], item[1]))
+    return results
+
+
+def print_results(results):
+    for scope, name, label, _flags in results:
+        print(f"{scope}::{name} = label = {label}")
+
+
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "--build-plan":
+        trace_dir = pathlib.Path(sys.argv[2])
+        plan_path = pathlib.Path(sys.argv[3])
+        if not trace_dir.is_dir():
+            print(f"error: trace directory does not exist: {trace_dir}", file=sys.stderr)
+            return 1
+        try:
+            build_label_plan(trace_dir, plan_path)
+        except Exception as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        return 0
+
+    if len(sys.argv) == 3 and sys.argv[1] == "--final":
+        trace_dir = pathlib.Path(sys.argv[2])
+        if not trace_dir.is_dir():
+            print(f"error: trace directory does not exist: {trace_dir}", file=sys.stderr)
+            return 1
+        try:
+            print_results(analyze_final(trace_dir))
+        except Exception as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        return 0
+
     if len(sys.argv) != 2:
-        print(f"usage: {sys.argv[0]} <trace-dir>", file=sys.stderr)
+        print(
+            "usage: analyze_results.py <trace-dir> | "
+            "analyze_results.py --build-plan <trace-dir> <plan-file> | "
+            "analyze_results.py --final <trace-dir>",
+            file=sys.stderr,
+        )
         return 1
 
     trace_dir = pathlib.Path(sys.argv[1])
@@ -122,13 +196,10 @@ def main():
         return 1
 
     try:
-        results = analyze(trace_dir)
+        print_results(analyze_discovery(trace_dir))
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-
-    for scope, name, label, _flags in results:
-        print(f"{scope}::{name} = label = {label}")
 
     return 0
 

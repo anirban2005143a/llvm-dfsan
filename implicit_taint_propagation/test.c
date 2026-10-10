@@ -14,32 +14,34 @@ int main(int argc, char **argv) {
     dfsan_set_label(2, &s2, sizeof(s2));
     dfsan_set_label(4, &s3, sizeof(s3));
 
-    int p = 0;
-    int q = 0;
-    int r = 0;
+    int x = 0;
+    int y = 0;
+    int z = 0;
 
     int a = 10;
-    int b = 20;
+    int b = 10;
     int c = 10;
     int d = 10;
 
-    if ((s1 && s2)) {
-        p = (a+b);
-        a=p;
-        p = 10;
+    if ((s1)) {
+        x = 20;
+        a=x;
+        x = 0;
     } else if (s2) {
-        // p = (c+b) + 10;
-        // b=p;
-        // p = 10;
+        y = 20;
+        b = y;
+        y = 0;
     } else if (s3) {
-        // p = (2*b)-a;
-        // c=p;
-        // p = 20;
     } else {
-        // p = a+c+10;
-        // d=p;
-        // p = 10;
     }
+
+    // a = x;
+    // b = y;
+
+    // x = 10;
+    // y = 10;
+
+    c = a+b;
 
     return 0;
 }

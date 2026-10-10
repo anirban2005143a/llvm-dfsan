@@ -8,6 +8,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
@@ -510,6 +511,46 @@ static void instrumentFunctionExits(Module &M, Function &F) {
   }
 }
 
+// Must run before DFSan instrumentation. DFSan normally keeps the labels of
+// non-escaping local allocas in compiler-generated shadow allocas. Since the
+// implicit analysis adds labels dynamically at runtime, those labels would not
+// be visible to later loads/stores. An opaque side-effecting asm use makes each
+// main-local address escape, forcing DFSan to use memory-backed shadow for it.
+struct EscapeMainAllocasForDFSan : public PassInfoMixin<EscapeMainAllocasForDFSan> {
+  PreservedAnalyses run(Module &M, ModuleAnalysisManager &) {
+    Function *F = M.getFunction("main");
+    if (!F || F->isDeclaration())
+      return PreservedAnalyses::all();
+
+    LLVMContext &Ctx = M.getContext();
+    Type *VoidTy = Type::getVoidTy(Ctx);
+    SmallVector<AllocaInst *, 64> Allocas;
+    for (BasicBlock &BB : *F) {
+      for (Instruction &I : BB) {
+        if (auto *AI = dyn_cast<AllocaInst>(&I))
+          Allocas.push_back(AI);
+      }
+    }
+
+    if (Allocas.empty())
+      return PreservedAnalyses::all();
+
+    for (AllocaInst *AI : Allocas) {
+      Instruction *InsertPt = AI->getNextNode();
+      if (!InsertPt)
+        continue;
+
+      Type *PtrTy = AI->getType();
+      FunctionType *AsmTy = FunctionType::get(VoidTy, {PtrTy}, false);
+      InlineAsm *Escape = InlineAsm::get(AsmTy, "", "r,~{memory}", true);
+      IRBuilder<> B(InsertPt);
+      B.CreateCall(Escape, {AI});
+    }
+
+    return PreservedAnalyses::none();
+  }
+};
+
 struct ImplicitTaintPropagation
     : public PassInfoMixin<ImplicitTaintPropagation> {
   uint32_t NextBranchId = 1;
@@ -554,15 +595,29 @@ llvmGetPassPluginInfo() {
   return {LLVM_PLUGIN_API_VERSION, "ImplicitTaintPropagation",
           LLVM_VERSION_STRING,
           [](PassBuilder &PB) {
+            // Clang loads this plugin while building its default optimization
+            // pipeline. PipelineStart runs before DFSan's sanitizer pass is
+            // inserted, which is essential for the alloca-shadow workaround.
+            PB.registerPipelineStartEPCallback(
+                [](ModulePassManager &MPM, OptimizationLevel) {
+                  MPM.addPass(EscapeMainAllocasForDFSan());
+                });
+
             PB.registerPipelineParsingCallback(
                 [](StringRef Name, ModulePassManager &MPM,
                    ArrayRef<PassBuilder::PipelineElement>) {
-                  if (Name != "implicit-taint")
-                    return false;
+                  if (Name == "implicit-escape") {
+                    MPM.addPass(EscapeMainAllocasForDFSan());
+                    return true;
+                  }
 
-                  MPM.addPass(createModuleToFunctionPassAdaptor(
-                      ImplicitTaintPropagation()));
-                  return true;
+                  if (Name == "implicit-taint") {
+                    MPM.addPass(createModuleToFunctionPassAdaptor(
+                        ImplicitTaintPropagation()));
+                    return true;
+                  }
+
+                  return false;
                 });
           }};
 }

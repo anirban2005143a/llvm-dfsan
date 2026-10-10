@@ -11,6 +11,7 @@
 #define MAX_VARIABLE_NAME 128
 #define MAX_BRANCH_STATES 4096
 #define MAX_CONTEXT_DEPENDENCIES 512
+#define MAX_IMPLICIT_MARKS 16384
 
 struct Frame {
     uint64_t id;
@@ -33,6 +34,13 @@ struct BranchState {
     int valid;
 };
 
+struct PlannedImplicitLabel {
+    uint32_t branch_id;
+    dfsan_label label;
+    char scope[MAX_SCOPE_NAME];
+    char name[MAX_VARIABLE_NAME];
+};
+
 static struct Frame Frames[MAX_FRAMES];
 static size_t FrameCount;
 static uint64_t NextFrameId = 1;
@@ -43,11 +51,56 @@ static size_t CurrentCount;
 static struct BranchState Branches[MAX_BRANCH_STATES];
 static size_t BranchCount;
 
+static struct PlannedImplicitLabel ImplicitMarks[MAX_IMPLICIT_MARKS];
+static size_t ImplicitMarkCount;
+static int ApplyImplicitPlan;
+
 static dfsan_label PendingConditionLabel;
 static FILE *TraceFP;
 static int Initialized;
 
 static void finalize_runtime(void);
+static void copy_string(char *dst, size_t dst_size, const char *src);
+
+static void load_implicit_plan(void) {
+    const char *path = getenv("IMPLICIT_LABELS_FILE");
+    if (!path || !*path)
+        return;
+
+    FILE *fp = fopen(path, "r");
+    if (!fp) {
+        fprintf(stderr, "error: cannot open IMPLICIT_LABELS_FILE: %s\n", path);
+        exit(1);
+    }
+
+    ApplyImplicitPlan = 1;
+    char line[2 * MAX_VARIABLE_NAME + MAX_SCOPE_NAME + 64];
+    while (fgets(line, sizeof(line), fp)) {
+        unsigned branch_id = 0;
+        unsigned label = 0;
+        char scope[MAX_SCOPE_NAME] = {0};
+        char name[MAX_VARIABLE_NAME] = {0};
+
+        if (sscanf(line, "%u|%u|%127[^|]|%127[^\r\n]",
+                   &branch_id, &label, scope, name) != 4)
+            continue;
+        if (label == 0 || label > UINT8_MAX)
+            continue;
+        if (ImplicitMarkCount >= MAX_IMPLICIT_MARKS) {
+            fprintf(stderr, "error: too many implicit-label plan entries\n");
+            fclose(fp);
+            exit(1);
+        }
+
+        struct PlannedImplicitLabel *mark = &ImplicitMarks[ImplicitMarkCount++];
+        mark->branch_id = (uint32_t)branch_id;
+        mark->label = (dfsan_label)label;
+        copy_string(mark->scope, sizeof(mark->scope), scope);
+        copy_string(mark->name, sizeof(mark->name), name);
+    }
+
+    fclose(fp);
+}
 
 static const char *trace_path(void) {
     const char *p = getenv("IMPLICIT_TRACE_FILE");
@@ -181,6 +234,7 @@ static void initialize_runtime(void) {
         return;
 
     Initialized = 1;
+    load_implicit_plan();
     TraceFP = fopen(trace_path(), "ab");
     if (!TraceFP) {
         fprintf(stderr, "error: cannot open IMPLICIT_TRACE_FILE: %s\n",
@@ -293,6 +347,28 @@ void __implicit_record_branch_outcome(uint32_t branch_id,
         B->observed_outcomes |= (UINT64_C(1) << outcome);
 }
 
+static void apply_implicit_labels(uint32_t branch_id) {
+    if (!ApplyImplicitPlan || FrameCount == 0)
+        return;
+
+    uint64_t frame_id = Frames[FrameCount - 1].id;
+    for (size_t i = 0; i < ImplicitMarkCount; ++i) {
+        const struct PlannedImplicitLabel *mark = &ImplicitMarks[i];
+        if (mark->branch_id != branch_id)
+            continue;
+
+        struct CurrentVariable *V =
+            find_current_variable(frame_id, mark->scope, mark->name);
+        if (!V || !V->addr || V->size == 0 || (V->flags & 1u))
+            continue;
+
+        /* Add the inferred control-dependence label to the variable's shadow.
+         * Subsequent instrumented loads/stores propagate it normally, while
+         * a later constant store naturally writes an untainted shadow. */
+        dfsan_add_label(mark->label, V->addr, V->size);
+    }
+}
+
 void __implicit_observe_branch(uint32_t branch_id,
                                const uint32_t *dependencies,
                                size_t dependency_count) {
@@ -306,6 +382,10 @@ void __implicit_observe_branch(uint32_t branch_id,
         return;
 
     dfsan_label Label = context_label(dependencies, dependency_count);
+
+    /* In the second pass, apply labels learned from cross-test-case value
+     * comparisons exactly at this conditional's merge point. */
+    apply_implicit_labels(branch_id);
 
     uint64_t Outcomes = B->observed_outcomes;
     for (uint32_t Outcome = 0; Outcome < 64; ++Outcome) {
@@ -327,8 +407,8 @@ void __implicit_observe_branch(uint32_t branch_id,
     B->observed_outcomes = 0;
 }
 
-/* Required by -dfsan-event-callbacks. The analysis deliberately does not
- * modify DFSan shadow memory; concrete values are compared across paths. */
+/* Required by -dfsan-event-callbacks. These callbacks remain no-ops;
+ * inferred implicit labels are applied at merge points using the saved plan. */
 void __dfsan_load_callback(dfsan_label label, void *addr) {
     (void)label;
     (void)addr;
