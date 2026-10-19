@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+TEST_CASES_FILE="${TEST_CASES_FILE:-$ROOT/test_cases.txt}"
 BUILD="$(mktemp -d /tmp/implicit_taint_build.XXXXXX)"
 DISCOVERY_TRACE_DIR="$BUILD/discovery_traces"
 FINAL_TRACE_DIR="$BUILD/final_traces"
@@ -14,6 +15,11 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$ROOT"
+
+if [[ ! -f "$TEST_CASES_FILE" ]]; then
+    echo "error: test-case file was not found: $TEST_CASES_FILE" >&2
+    exit 1
+fi
 
 LLVM_CONFIG="${LLVM_CONFIG:-$(command -v llvm-config-21 || command -v llvm-config || true)}"
 
@@ -104,10 +110,10 @@ run_test_cases() {
         fi
 
         case_index=$((case_index + 1))
-    done < test_cases.txt
+    done < "$TEST_CASES_FILE"
 
     if [[ "$case_index" -eq 0 ]]; then
-        echo "error: test_cases.txt contains no test cases" >&2
+        echo "error: test-case file contains no test cases: $TEST_CASES_FILE" >&2
         return 1
     fi
 }

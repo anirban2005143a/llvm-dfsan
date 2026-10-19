@@ -25,21 +25,20 @@ int main(int argc, char **argv) {
 
     if ((s1)) {
         x = 20;
-        a=x;
-        x = 0;
+        if(s2){
+            y = 20;
+        }
     } else if (s2) {
-        y = 20;
-        b = y;
-        y = 0;
+        
     } else if (s3) {
     } else {
     }
 
-    // a = x;
-    // b = y;
+    a = x;
+    b = y;
 
-    // x = 10;
-    // y = 10;
+    x = 10;
+    y = 10;
 
     c = a+b;
 
