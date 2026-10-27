@@ -1,0 +1,108 @@
+END-OF-MAIN VALUE REPORT (SCALARS AND ARRAY ELEMENTS)
+=====================================================
+
+Unique public-input tuples: 3
+Unique secret-input tuples: 6
+Program executions: 18
+Snapshot point: immediately before main returns
+Tracked values: primitive scalar globals, elements of fixed-size primitive arrays, and eligible values declared directly in main scope
+Array elements are tracked independently (for example, values[0], values[1])
+Excluded: nested main-block locals, locals in other functions, pointers, variable-length arrays, arrays of pointers/aggregates, structures, and other aggregates
+
+Input roles inferred from dfsan_set_label calls:
+  Secret-marked source variable names: secret1, secret2, secret3
+  a: PUBLIC
+  b: PUBLIC
+  c: PUBLIC
+  secret1: SECRET/TAINTED
+  secret2: SECRET/TAINTED
+  secret3: SECRET/TAINTED
+
+Unique secret-input tuples (reused for every public group):
+  S1: secret1=0, secret2=0, secret3=0
+  S2: secret1=0, secret2=1, secret3=0
+  S3: secret1=1, secret2=0, secret3=0
+  S4: secret1=-1, secret2=0, secret3=0
+  S5: secret1=0, secret2=0, secret3=1
+  S6: secret1=0, secret2=0, secret3=-1
+
+Taint status meanings: DIRECT = nonzero DFSan label in discovery run; IMPLICIT = final concrete value differs across secret tuples for this public tuple while baseline labels are zero; NOT TAINTED = value is stable and baseline label is zero; INCOMPLETE = a value was not recorded.
+The taint-status column is based on discovery traces, before inferred implicit labels are applied.
+
+
+PUBLIC GROUP 1
+Public inputs: a=0, b=0, c=0
+
+| Scope | Variable | S1 | S2 | S3 | S4 | S5 | S6 | Taint status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| global | implicit_scope[0] | 109 | 109 | 109 | 109 | 109 | 109 | NOT TAINTED |
+| global | implicit_scope[1] | 97 | 97 | 97 | 97 | 97 | 97 | NOT TAINTED |
+| global | implicit_scope[2] | 105 | 105 | 105 | 105 | 105 | 105 | NOT TAINTED |
+| global | implicit_scope[3] | 110 | 110 | 110 | 110 | 110 | 110 | NOT TAINTED |
+| global | implicit_scope[4] | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | a | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | b | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | c | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | cnt | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | secret1 | 0 | 0 | 1 | -1 (unsigned=4294967295) | 0 | 0 | DIRECT |
+| main | secret2 | 0 | 1 | 0 | 0 | 0 | 0 | DIRECT |
+| main | secret3 | 0 | 0 | 0 | 0 | 1 | -1 (unsigned=4294967295) | DIRECT |
+| main | values[0] | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | values[1] | 0 | 0 | 1 | -1 (unsigned=4294967295) | 0 | 0 | DIRECT |
+| main | values[2] | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | values[3] | 42 | 42 | 42 | 42 | 42 | 42 | NOT TAINTED |
+| main | x | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | y | 1 | 2 | 1 | 1 | 1 | 1 | IMPLICIT |
+| main | z | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+
+
+PUBLIC GROUP 2
+Public inputs: a=1, b=1, c=0
+
+| Scope | Variable | S1 | S2 | S3 | S4 | S5 | S6 | Taint status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| global | implicit_scope[0] | 109 | 109 | 109 | 109 | 109 | 109 | NOT TAINTED |
+| global | implicit_scope[1] | 97 | 97 | 97 | 97 | 97 | 97 | NOT TAINTED |
+| global | implicit_scope[2] | 105 | 105 | 105 | 105 | 105 | 105 | NOT TAINTED |
+| global | implicit_scope[3] | 110 | 110 | 110 | 110 | 110 | 110 | NOT TAINTED |
+| global | implicit_scope[4] | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | a | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
+| main | b | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
+| main | c | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | cnt | 0 | 0 | 1 | 0 | 0 | 0 | IMPLICIT |
+| main | secret1 | 0 | 0 | 1 | -1 (unsigned=4294967295) | 0 | 0 | DIRECT |
+| main | secret2 | 0 | 1 | 0 | 0 | 0 | 0 | DIRECT |
+| main | secret3 | 0 | 0 | 0 | 0 | 1 | -1 (unsigned=4294967295) | DIRECT |
+| main | values[0] | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
+| main | values[1] | 0 | 0 | 1 | -1 (unsigned=4294967295) | 0 | 0 | DIRECT |
+| main | values[2] | 0 | 0 | 0 | 0 | 0 | 0 | DIRECT |
+| main | values[3] | 42 | 42 | 43 | 42 | 42 | 42 | IMPLICIT |
+| main | x | 5 | 5 | 20 | 10 | 5 | 5 | IMPLICIT |
+| main | y | 1 | 2 | 1 | 1 | 1 | 1 | IMPLICIT |
+| main | z | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+
+
+PUBLIC GROUP 3
+Public inputs: a=1, b=0, c=1
+
+| Scope | Variable | S1 | S2 | S3 | S4 | S5 | S6 | Taint status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| global | implicit_scope[0] | 109 | 109 | 109 | 109 | 109 | 109 | NOT TAINTED |
+| global | implicit_scope[1] | 97 | 97 | 97 | 97 | 97 | 97 | NOT TAINTED |
+| global | implicit_scope[2] | 105 | 105 | 105 | 105 | 105 | 105 | NOT TAINTED |
+| global | implicit_scope[3] | 110 | 110 | 110 | 110 | 110 | 110 | NOT TAINTED |
+| global | implicit_scope[4] | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | a | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
+| main | b | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | c | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
+| main | cnt | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | secret1 | 0 | 0 | 1 | -1 (unsigned=4294967295) | 0 | 0 | DIRECT |
+| main | secret2 | 0 | 1 | 0 | 0 | 0 | 0 | DIRECT |
+| main | secret3 | 0 | 0 | 0 | 0 | 1 | -1 (unsigned=4294967295) | DIRECT |
+| main | values[0] | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
+| main | values[1] | 0 | 0 | 1 | -1 (unsigned=4294967295) | 0 | 0 | DIRECT |
+| main | values[2] | 0 | 0 | 0 | 0 | 0 | 0 | DIRECT |
+| main | values[3] | 42 | 42 | 42 | 42 | 42 | 42 | NOT TAINTED |
+| main | x | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | y | 1 | 2 | 1 | 1 | 1 | 1 | IMPLICIT |
+| main | z | 1 | 1 | 1 | 1 | 5 | -5 (unsigned=4294967291) | IMPLICIT |
