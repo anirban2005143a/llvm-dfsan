@@ -59,8 +59,6 @@ fi
 "$CLANG" -O0 -g -Xclang -disable-O0-optnone \
     -fpass-plugin="$BUILD/FindTaintedCondition.so" \
     -fsanitize=dataflow \
-    -mllvm -dfsan-conditional-callbacks \
-    -mllvm -dfsan-event-callbacks \
     -S -emit-llvm "$SOURCE_FILE" \
     -o "$BUILD/dfsan.ll"
 
@@ -131,7 +129,7 @@ run_test_cases() {
     fi
 }
 
-# Pass 1: record final values and union candidates across all public groups.
+# Pass 1: record final values; Python infers candidates by public/secret grouping.
 run_test_cases "$DISCOVERY_TRACE_DIR"
 python3 analyze_results.py --build-plan \
     "$DISCOVERY_TRACE_DIR" "$LABEL_PLAN" "$EXECUTION_CASES_FILE" "$SOURCE_FILE"

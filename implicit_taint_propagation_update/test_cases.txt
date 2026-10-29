@@ -1,22 +1,11 @@
-# Inputs are positional argv values; names must match variables labelled by dfsan_set_label.
 # inputs: a b c s1 s2 s3
-# The same six secret tuples are tested for each of three public tuples.
-# Values include zero/one/multiple loop iterations and helper if/else-if/else cases.
-0 0 1 0 0 0
-0 0 1 0 1 0
-0 0 1 1 0 1
-0 0 1 1 1 1
-0 0 1 2 0 1
-0 0 1 0 0 -1
-1 0 1 0 0 0
-1 0 1 0 1 0
-1 0 1 1 0 1
-1 0 1 1 1 1
-1 0 1 2 0 1
-1 0 1 0 0 -1
-2 1 0 0 0 0
-2 1 0 0 1 0
-2 1 0 1 0 1
-2 1 0 1 1 1
-2 1 0 2 0 1
-2 1 0 0 0 -1
+
+0 0 0 0 0 0
+0 0 0 0 1 0
+
+0 1 0 0 0 0
+0 1 0 2 1 0
+
+1 1 1 0 0 1
+1 1 1 0 0 -1
+1 1 1 0 0 0

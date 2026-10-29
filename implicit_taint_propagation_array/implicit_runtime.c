@@ -9,11 +9,8 @@
 #define MAX_FRAMES 64
 #define MAX_SCOPE_NAME 128
 #define MAX_VARIABLE_NAME 128
-#define MAX_BRANCH_STATES 4096
-#define MAX_CONTEXT_DEPENDENCIES 512
 #define MAX_IMPLICIT_MARKS 16384
 
-#define VARIABLE_FLAG_POINTER 1u
 #define VARIABLE_FLAG_FLOATING 2u
 #define VARIABLE_FLAG_GLOBAL 8u
 
@@ -32,17 +29,8 @@ struct CurrentVariable {
     int initialized;
 };
 
-struct BranchState {
-    uint32_t id;
-    dfsan_label label;
-    uint64_t observed_outcomes;
-    int valid;
-};
-
 struct PlannedImplicitLabel {
-    uint32_t branch_id;
     dfsan_label label;
-    int at_exit;
     char scope[MAX_SCOPE_NAME];
     char name[MAX_VARIABLE_NAME];
 };
@@ -54,14 +42,10 @@ static uint64_t NextFrameId = 1;
 static struct CurrentVariable Current[MAX_CURRENT_VARIABLES];
 static size_t CurrentCount;
 
-static struct BranchState Branches[MAX_BRANCH_STATES];
-static size_t BranchCount;
-
 static struct PlannedImplicitLabel ImplicitMarks[MAX_IMPLICIT_MARKS];
 static size_t ImplicitMarkCount;
 static int ApplyImplicitPlan;
 
-static dfsan_label PendingConditionLabel;
 static FILE *TraceFP;
 static int Initialized;
 
@@ -83,15 +67,18 @@ static void load_implicit_plan(void) {
     ApplyImplicitPlan = 1;
     char line[2 * MAX_VARIABLE_NAME + MAX_SCOPE_NAME + 64];
     while (fgets(line, sizeof(line), fp)) {
-        char first[32] = {0};
+        char stage[32] = {0};
         unsigned label = 0;
         char scope[MAX_SCOPE_NAME] = {0};
         char name[MAX_VARIABLE_NAME] = {0};
 
         if (sscanf(line, "%31[^|]|%u|%127[^|]|%127[^\r\n]",
-                   first, &label, scope, name) != 4)
+                   stage, &label, scope, name) != 4)
             continue;
-        if (label == 0 || label > UINT8_MAX)
+
+        // Value-comparison inference only creates EXIT entries. Branch-specific
+        // plan records belonged to the previous control-dependence design.
+        if (strcmp(stage, "EXIT") != 0 || label == 0 || label > UINT8_MAX)
             continue;
         if (ImplicitMarkCount >= MAX_IMPLICIT_MARKS) {
             fprintf(stderr, "error: too many implicit-label plan entries\n");
@@ -101,18 +88,6 @@ static void load_implicit_plan(void) {
 
         struct PlannedImplicitLabel *mark = &ImplicitMarks[ImplicitMarkCount++];
         memset(mark, 0, sizeof(*mark));
-        if (strcmp(first, "EXIT") == 0) {
-            mark->at_exit = 1;
-            mark->branch_id = 0;
-        } else {
-            char *end = NULL;
-            unsigned long parsed = strtoul(first, &end, 10);
-            if (!end || *end != '\0' || parsed > UINT32_MAX) {
-                --ImplicitMarkCount;
-                continue;
-            }
-            mark->branch_id = (uint32_t)parsed;
-        }
         mark->label = (dfsan_label)label;
         copy_string(mark->scope, sizeof(mark->scope), scope);
         copy_string(mark->name, sizeof(mark->name), name);
@@ -134,118 +109,47 @@ static void copy_string(char *dst, size_t dst_size, const char *src) {
     snprintf(dst, dst_size, "%s", src);
 }
 
-static int same_text(const char *A, const char *B) {
-    return A && B && strcmp(A, B) == 0;
+static int same_text(const char *a, const char *b) {
+    return a && b && strcmp(a, b) == 0;
 }
 
 static struct CurrentVariable *find_current_variable(uint64_t frame_id,
                                                        const char *scope,
                                                        const char *name) {
     for (size_t i = 0; i < CurrentCount; ++i) {
-        struct CurrentVariable *V = &Current[i];
-        if (V->frame_id != frame_id)
+        struct CurrentVariable *v = &Current[i];
+        if (v->frame_id != frame_id)
             continue;
-        if (!same_text(V->scope, scope) || !same_text(V->name, name))
+        if (!same_text(v->scope, scope) || !same_text(v->name, name))
             continue;
-        return V;
+        return v;
     }
     return NULL;
 }
 
-static struct BranchState *find_branch_state(uint32_t id) {
-    for (size_t i = 0; i < BranchCount; ++i) {
-        if (Branches[i].id == id)
-            return &Branches[i];
-    }
-    return NULL;
-}
-
-static struct BranchState *get_or_create_branch_state(uint32_t id) {
-    struct BranchState *B = find_branch_state(id);
-    if (B)
-        return B;
-
-    if (BranchCount >= MAX_BRANCH_STATES)
-        return NULL;
-
-    B = &Branches[BranchCount++];
-    memset(B, 0, sizeof(*B));
-    B->id = id;
-    B->valid = 1;
-    return B;
-}
-
-static void write_hex(FILE *FP, const unsigned char *Data, size_t Size) {
-    static const char Hex[] = "0123456789abcdef";
-
-    if (!Data || Size == 0) {
-        fputc('-', FP);
+static void write_hex(FILE *fp, const unsigned char *data, size_t size) {
+    static const char hex[] = "0123456789abcdef";
+    if (!data || size == 0) {
+        fputc('-', fp);
         return;
     }
 
-    for (size_t i = 0; i < Size; ++i) {
-        unsigned char C = Data[i];
-        fputc(Hex[C >> 4], FP);
-        fputc(Hex[C & 0x0f], FP);
+    for (size_t i = 0; i < size; ++i) {
+        unsigned char c = data[i];
+        fputc(hex[c >> 4], fp);
+        fputc(hex[c & 0x0f], fp);
     }
 }
 
-static dfsan_label context_label(const uint32_t *Dependencies, size_t Count) {
-    dfsan_label Label = 0;
-
-    if (!Dependencies)
-        return 0;
-
-    size_t Limit = Count;
-    if (Limit > MAX_CONTEXT_DEPENDENCIES)
-        Limit = MAX_CONTEXT_DEPENDENCIES;
-
-    for (size_t i = 0; i < Limit; ++i) {
-        struct BranchState *B = find_branch_state(Dependencies[i]);
-        if (B && B->valid)
-            Label = (dfsan_label)(Label | B->label);
-    }
-
-    return Label;
-}
-
-static void trace_observation(const struct CurrentVariable *V,
-                              uint32_t BranchId, uint32_t Outcome,
-                              dfsan_label ContextLabel) {
-    if (!TraceFP || !V || !V->addr || V->size == 0 || !V->initialized)
+static void trace_final(const struct CurrentVariable *v) {
+    if (!TraceFP || !v || !v->addr || v->size == 0 || !v->initialized)
         return;
 
-    fprintf(TraceFP, "O|%u|%u|%u|%u|%zu|%s|%s|",
-            BranchId,
-            Outcome,
-            (unsigned)ContextLabel,
-            V->flags,
-            V->size,
-            V->scope,
-            V->name);
-    write_hex(TraceFP, (const unsigned char *)V->addr, V->size);
-    fputc('\n', TraceFP);
-}
-
-static void trace_final(const struct CurrentVariable *V) {
-    if (!TraceFP || !V || !V->addr || V->size == 0 || !V->initialized)
-        return;
-
-    dfsan_label ExplicitLabel = dfsan_read_label(V->addr, V->size);
-
+    dfsan_label label = dfsan_read_label(v->addr, v->size);
     fprintf(TraceFP, "F|%u|%zu|%u|%s|%s|",
-            V->flags,
-            V->size,
-            (unsigned)ExplicitLabel,
-            V->scope,
-            V->name);
-    write_hex(TraceFP, (const unsigned char *)V->addr, V->size);
+            v->flags, v->size, (unsigned)label, v->scope, v->name);
+    write_hex(TraceFP, (const unsigned char *)v->addr, v->size);
     fputc('\n', TraceFP);
-}
-
-static void conditional_callback(dfsan_label label, dfsan_origin origin) {
-    (void)origin;
-    PendingConditionLabel = label;
 }
 
 static void initialize_runtime(void) {
@@ -260,8 +164,6 @@ static void initialize_runtime(void) {
                 trace_path());
         exit(1);
     }
-
-    dfsan_set_conditional_callback(conditional_callback);
 }
 
 __attribute__((constructor)) static void implicit_runtime_constructor(void) {
@@ -271,149 +173,39 @@ __attribute__((constructor)) static void implicit_runtime_constructor(void) {
 
 void __implicit_enter_function(const char *scope) {
     initialize_runtime();
-
     if (FrameCount >= MAX_FRAMES)
         return;
 
-    struct Frame *Frame = &Frames[FrameCount++];
-    memset(Frame, 0, sizeof(*Frame));
-    Frame->id = NextFrameId++;
-    copy_string(Frame->scope, sizeof(Frame->scope), scope);
-
-    PendingConditionLabel = 0;
-}
-
-void __implicit_exit_function(const char *scope) {
-    initialize_runtime();
-    (void)scope;
-
-    if (FrameCount == 0)
-        return;
-
-    uint64_t FrameId = Frames[FrameCount - 1].id;
-
-    // Cross-run analysis can only identify differing final values after the
-    // discovery executions complete. Apply those inferred labels immediately
-    // before taking the second-pass final snapshot.
-    apply_final_implicit_labels();
-
-    size_t i = 0;
-    while (i < CurrentCount) {
-        struct CurrentVariable *V = &Current[i];
-        if (V->frame_id != FrameId) {
-            ++i;
-            continue;
-        }
-
-        trace_final(V);
-        Current[i] = Current[CurrentCount - 1];
-        --CurrentCount;
-    }
-
-    --FrameCount;
-    PendingConditionLabel = 0;
-    fflush(TraceFP);
+    struct Frame *frame = &Frames[FrameCount++];
+    memset(frame, 0, sizeof(*frame));
+    frame->id = NextFrameId++;
+    copy_string(frame->scope, sizeof(frame->scope), scope);
 }
 
 void __implicit_register_variable(const char *scope, const char *name,
                                   void *addr, size_t size, uint32_t flags) {
     initialize_runtime();
-
     if (FrameCount == 0 || !scope || !name || !addr || size == 0)
         return;
 
-    uint64_t FrameId = Frames[FrameCount - 1].id;
-    struct CurrentVariable *V =
-        find_current_variable(FrameId, scope, name);
-
-    if (!V) {
+    uint64_t frame_id = Frames[FrameCount - 1].id;
+    struct CurrentVariable *v = find_current_variable(frame_id, scope, name);
+    if (!v) {
         if (CurrentCount >= MAX_CURRENT_VARIABLES)
             return;
-
-        V = &Current[CurrentCount++];
-        memset(V, 0, sizeof(*V));
-        V->frame_id = FrameId;
-        copy_string(V->scope, sizeof(V->scope), scope);
-        copy_string(V->name, sizeof(V->name), name);
+        v = &Current[CurrentCount++];
+        memset(v, 0, sizeof(*v));
+        v->frame_id = frame_id;
+        copy_string(v->scope, sizeof(v->scope), scope);
+        copy_string(v->name, sizeof(v->name), name);
     }
 
-    V->addr = addr;
-    V->size = size;
-    V->flags = flags;
+    v->addr = addr;
+    v->size = size;
+    v->flags = flags;
+    // Globals have static storage and are initialized before main begins.
     if (flags & VARIABLE_FLAG_GLOBAL)
-        V->initialized = 1;
-}
-
-void __implicit_clear_condition(void) {
-    initialize_runtime();
-    PendingConditionLabel = 0;
-}
-
-void __implicit_record_condition(uint32_t branch_id) {
-    initialize_runtime();
-
-    struct BranchState *B = get_or_create_branch_state(branch_id);
-    if (!B)
-        return;
-
-    B->label = PendingConditionLabel;
-    B->valid = 1;
-    PendingConditionLabel = 0;
-}
-
-void __implicit_record_branch_outcome(uint32_t branch_id,
-                                      uint32_t outcome) {
-    initialize_runtime();
-
-    struct BranchState *B = get_or_create_branch_state(branch_id);
-    if (!B)
-        return;
-
-    if (outcome < 64)
-        B->observed_outcomes |= (UINT64_C(1) << outcome);
-}
-
-static void apply_implicit_labels(uint32_t branch_id) {
-    if (!ApplyImplicitPlan || FrameCount == 0)
-        return;
-
-    uint64_t frame_id = Frames[FrameCount - 1].id;
-    for (size_t i = 0; i < ImplicitMarkCount; ++i) {
-        const struct PlannedImplicitLabel *mark = &ImplicitMarks[i];
-        if (mark->at_exit || mark->branch_id != branch_id)
-            continue;
-
-        struct CurrentVariable *V =
-            find_current_variable(frame_id, mark->scope, mark->name);
-        if (!V || !V->addr || V->size == 0 ||
-            (V->flags & VARIABLE_FLAG_POINTER))
-            continue;
-
-        /* Add the inferred control-dependence label to the variable's shadow.
-         * Subsequent instrumented loads/stores propagate it normally, while
-         * a later constant store naturally writes an untainted shadow. */
-        dfsan_add_label(mark->label, V->addr, V->size);
-    }
-}
-
-static void apply_final_implicit_labels(void) {
-    if (!ApplyImplicitPlan || FrameCount == 0)
-        return;
-
-    uint64_t frame_id = Frames[FrameCount - 1].id;
-    for (size_t i = 0; i < ImplicitMarkCount; ++i) {
-        const struct PlannedImplicitLabel *mark = &ImplicitMarks[i];
-        if (!mark->at_exit)
-            continue;
-
-        struct CurrentVariable *V =
-            find_current_variable(frame_id, mark->scope, mark->name);
-        if (!V || !V->addr || V->size == 0 || !V->initialized ||
-            (V->flags & VARIABLE_FLAG_POINTER))
-            continue;
-
-        dfsan_add_label(mark->label, V->addr, V->size);
-    }
+        v->initialized = 1;
 }
 
 void __implicit_mark_initialized(void *addr, size_t size) {
@@ -427,90 +219,78 @@ void __implicit_mark_initialized(void *addr, size_t size) {
     uintptr_t end = begin + size;
     uint64_t frame_id = Frames[FrameCount - 1].id;
 
-    // Mark every registered scalar/array element fully covered by the write.
-    // A scalar or arr[i] store marks just one object; a whole-array store or
-    // memcpy/memset marks each covered element independently.
+    // A scalar/arr[i] write marks only entries fully covered by that write.
+    // Whole-array initialization marks each eligible element independently.
     for (size_t i = 0; i < CurrentCount; ++i) {
-        struct CurrentVariable *V = &Current[i];
-        if (V->frame_id != frame_id || !V->addr || V->size == 0)
+        struct CurrentVariable *v = &Current[i];
+        if (v->frame_id != frame_id || !v->addr || v->size == 0)
             continue;
-        uintptr_t value_begin = (uintptr_t)V->addr;
-        if (V->size > UINTPTR_MAX - value_begin)
+        uintptr_t value_begin = (uintptr_t)v->addr;
+        if (v->size > UINTPTR_MAX - value_begin)
             continue;
-        uintptr_t value_end = value_begin + V->size;
+        uintptr_t value_end = value_begin + v->size;
         if (value_begin >= begin && value_end <= end)
-            V->initialized = 1;
+            v->initialized = 1;
     }
 }
 
-void __implicit_observe_branch(uint32_t branch_id,
-                               const uint32_t *dependencies,
-                               size_t dependency_count) {
-    initialize_runtime();
+static void apply_final_implicit_labels(void) {
+    if (!ApplyImplicitPlan || FrameCount == 0)
+        return;
 
+    uint64_t frame_id = Frames[FrameCount - 1].id;
+    for (size_t i = 0; i < ImplicitMarkCount; ++i) {
+        const struct PlannedImplicitLabel *mark = &ImplicitMarks[i];
+        struct CurrentVariable *v =
+            find_current_variable(frame_id, mark->scope, mark->name);
+        if (!v || !v->addr || v->size == 0 || !v->initialized)
+            continue;
+
+        // Add the inferred label to this one scalar or array element. Existing
+        // direct labels remain present because dfsan_add_label unions labels.
+        dfsan_add_label(mark->label, v->addr, v->size);
+    }
+}
+
+void __implicit_exit_function(const char *scope) {
+    initialize_runtime();
     if (FrameCount == 0)
         return;
-
-    struct BranchState *B = find_branch_state(branch_id);
-    if (!B || !B->valid || B->observed_outcomes == 0)
+    if (scope && !same_text(Frames[FrameCount - 1].scope, scope))
         return;
 
-    dfsan_label Label = context_label(dependencies, dependency_count);
+    uint64_t frame_id = Frames[FrameCount - 1].id;
 
-    /* In the second pass, apply labels learned from cross-test-case value
-     * comparisons exactly at this conditional's merge point. */
-    apply_implicit_labels(branch_id);
+    // Implicit taint is inferred offline from discovery snapshots. In the
+    // second run, apply the plan just before collecting the final snapshots.
+    apply_final_implicit_labels();
 
-    uint64_t Outcomes = B->observed_outcomes;
-    for (uint32_t Outcome = 0; Outcome < 64; ++Outcome) {
-        if (!(Outcomes & (UINT64_C(1) << Outcome)))
+    size_t i = 0;
+    while (i < CurrentCount) {
+        struct CurrentVariable *v = &Current[i];
+        if (v->frame_id != frame_id) {
+            ++i;
             continue;
-
-        for (size_t i = 0; i < CurrentCount; ++i) {
-            struct CurrentVariable *V = &Current[i];
-            if (V->frame_id != Frames[FrameCount - 1].id)
-                continue;
-
-            if (V->flags & VARIABLE_FLAG_POINTER)
-                continue;
-
-            trace_observation(V, branch_id, Outcome, Label);
         }
+
+        trace_final(v);
+        Current[i] = Current[CurrentCount - 1];
+        --CurrentCount;
     }
 
-    B->observed_outcomes = 0;
-}
-
-/* Required by -dfsan-event-callbacks. These callbacks remain no-ops;
- * inferred implicit labels are applied at merge points using the saved plan. */
-void __dfsan_load_callback(dfsan_label label, void *addr) {
-    (void)label;
-    (void)addr;
-}
-
-void __dfsan_store_callback(dfsan_label label, void *addr) {
-    (void)label;
-    (void)addr;
-}
-
-void __dfsan_mem_transfer_callback(dfsan_label *start, size_t len) {
-    (void)start;
-    (void)len;
-}
-
-void __dfsan_cmp_callback(dfsan_label combined_label) {
-    (void)combined_label;
+    --FrameCount;
+    fflush(TraceFP);
 }
 
 static void finalize_runtime(void) {
     if (!Initialized || !TraceFP)
         return;
 
-    for (size_t i = 0; i < CurrentCount; ++i) {
-        struct CurrentVariable *V = &Current[i];
-        if (V->frame_id == Frames[FrameCount ? FrameCount - 1 : 0].id)
-            trace_final(V);
-    }
+    // Fallback for paths that terminate without reaching main's return hook.
+    if (FrameCount > 0)
+        apply_final_implicit_labels();
+    for (size_t i = 0; i < CurrentCount; ++i)
+        trace_final(&Current[i]);
 
     fflush(TraceFP);
     fclose(TraceFP);

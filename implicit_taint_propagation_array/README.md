@@ -1,19 +1,20 @@
-# Generalized implicit taint propagation with LLVM DFSan
+# Generalized implicit taint propagation with LLVM + DFSan
 
-This version compares final concrete values across supplied program executions. It identifies an implicitly tainted scalar or individual fixed-size primitive-array element if its value changes across distinct secret-input combinations while the public-input values are identical. Findings from all eligible public-input groups are **united** into one end-of-`main` label plan.
+This project infers implicit taint from **end-of-`main` concrete-value comparisons**. It does not instrument branches, compute control dependencies, or use DFSan conditional/event callbacks. For each public-input tuple, the analyzer compares final values across the supplied secret-input tuples. An eligible variable/array element whose value changes and has no direct DFSan label becomes an implicit-taint candidate. Candidates are unioned across public groups and applied in a second execution pass.
 
-## Files
+## Project files
 
-- `FindTaintedCondition.cpp` — LLVM pass that instruments `main`, registers eligible scalar locals/globals and each eligible fixed-size primitive-array element, and places the final snapshot hook before `main` returns.
-- `implicit_runtime.c` — runtime records final values and applies inferred labels from the plan.
-- `analyze_results.py` — identifies source variables explicitly marked by `dfsan_set_label`, infers input roles, compares snapshots, and writes the human-readable report.
-- `test.c` — example with globals, primitive locals, `if` / `else if` / `else`, a loop, and a called function.
-- `test_cases.txt` — user-provided concrete input rows.
-- `run.sh` — build and two-pass execution flow.
+- `FindTaintedCondition.cpp` — custom LLVM pass that discovers eligible source variables, registers globals and `main()` locals/array elements, tracks initialization, and inserts the final snapshot hook.
+- `implicit_runtime.c` — records each eligible variable's final concrete value and DFSan label; applies inferred labels immediately before the final snapshot in pass two.
+- `analyze_results.py` — parses test cases and `dfsan_set_label()` calls, builds public/secret input combinations, compares snapshots, writes the label plan, and generates grouped tables.
+- `test.c` — sample source program with scalar/array values, conditionals, a loop, a helper function, globals and nested-scope variables.
+- `test_cases.txt` — user-supplied concrete input rows.
+- `test_analyzer.py` — Python analyzer unit tests.
+- `run.sh` — builds the plugin and runs discovery + label-application phases.
 
-## Test-case format and automatic input roles
+## Test-case format and input roles
 
-The first header line names the positional `argv` inputs in row order:
+Use a header that names the `argv` input columns in order, for example:
 
 ```text
 # inputs: a b c s1 s2 s3
@@ -21,34 +22,29 @@ The first header line names the positional `argv` inputs in row order:
 0 0 1 0 1 0
 ```
 
-The source should directly mark scalar secret variables, for example:
+A name that matches a variable passed directly by address to `dfsan_set_label(...)` in `test.c` is classified as secret/tainted. Every other header column is public. Header columns must match the source variables and positional `argv[]` parsing. The analyzer removes duplicate rows, finds unique public tuples and unique secret tuples, and expands their Cartesian product; it does not generate new input values.
 
-```c
-dfsan_set_label(1, &s1, sizeof(s1));
-dfsan_set_label(2, &s2, sizeof(s2));
-```
+## Inference model
 
-Input-column names matching variables passed directly by address to `dfsan_set_label` are treated as secret/tainted. All remaining input columns are automatically treated as public. Therefore, names in `# inputs:` must match the variable names in those source calls. This source scanner handles direct address targets and simple casts; it does not infer arbitrary pointer aliases.
+For each fixed public tuple:
 
-The analyzer removes duplicate rows while preserving the first occurrence. It extracts the unique **public tuples** and unique **secret tuples** present in those rows, then executes their Cartesian product. For example, 9 unique public tuples and 4 unique secret tuples become 36 executions. It does not invent new input values or generate new coverage-guided test values; it only recombines tuples supplied by the user.
+1. Read the final snapshots from all corresponding secret-input executions.
+2. Ignore a variable as implicit-taint evidence if any recorded discovery value has a nonzero DFSan label.
+3. Compare raw final-value bytes across secret executions. If the value changes and the variable is recorded in each required execution, mark it as an implicit-taint candidate for that public tuple.
+4. Union candidates across public tuples.
+5. In the second run, apply the candidate label using `dfsan_add_label()` immediately before the final snapshot.
 
-## Array-element design
+This is evidence from the concrete input set, not proof for every possible execution. A variable that changes during execution but is overwritten to the same final value is not inferred as tainted.
 
-The pass enumerates fixed-size C arrays recursively and registers each primitive leaf element under an indexed name. The runtime reads and adds DFSan labels for each element's own address range, rather than labeling the array as a single object. This follows DFSan's memory-region interface (`dfsan_read_label` and `dfsan_add_label`) documented in the [Clang DataFlowSanitizer reference](https://clang.llvm.org/docs/DataFlowSanitizer.html).
+## Tracked variable scope
 
-## What is compared
+The pass tracks primitive scalar global variables, primitive scalar variables declared directly in `main()`, and each element of fixed-size arrays whose leaf elements are primitive scalars. Multidimensional primitive arrays are flattened into entries such as `matrix[1][2]`. It excludes pointers, variable-length arrays, arrays of pointers/aggregates, structures, unions, function parameters, nested-block locals, and locals declared in helper functions. Debug information is required for reliable source-level scope filtering; the build uses `-g` and skips local variables that cannot be identified safely.
 
-For each distinct public-input tuple, runs are grouped together and the final values of every tracked scalar and array element are compared across distinct secret-input tuples. An eligible group requires at least two secret-input combinations. The inferred variable set is the union of candidates across all eligible public groups.
+Each array element has its own registration, final concrete value and DFSan label. Taint of one element does not automatically mark the entire array.
 
-A variable is only used as evidence if it is recorded in every execution in that group, is not a pointer, and has DFSan label zero in every discovery run. Variables with existing explicit DFSan labels are not redundantly marked by the comparison.
+## LLVM pass name
 
-## Debug report
-
-After a successful run, `final_values_report.txt` is written at the project root by default. The report has one table per unique public-input tuple, rather than listing every public-secret Cartesian-product execution as a separate case. Each table row is a tracked scalar variable or one array element; columns `S1`, `S2`, etc. show its final value under each unique secret tuple (the secret tuples are defined once in the report). The last column reports `DIRECT`, `IMPLICIT`, `NOT TAINTED`, or `INCOMPLETE` for that public-input group.
-
-`DIRECT` means the discovery execution had a nonzero DFSan label. `IMPLICIT` means the final concrete value changed across secret tuples for the same public tuple while the discovery labels remained zero. `NOT TAINTED` means the value stayed stable and its discovery label was zero. `INCOMPLETE` means some values could not be recorded. The report status is based on discovery traces before inferred implicit labels are injected, so inferred labels are not mistaken for direct labels.
-
-The report includes primitive scalar globals, elements of fixed-size arrays whose elements are primitive scalars, and primitive scalar/array-element variables declared directly in `main`'s function scope. Array elements are separate entries such as `values[0]` and `values[1]`, so direct or implicit taint of one element does not automatically mark the entire array. It excludes variables declared in nested `if`/`else`/loop blocks, locals in called functions, pointers, arrays of pointers, variable-length arrays, structures, and other aggregates. Fixed-size multidimensional arrays of primitive scalar elements are flattened into names such as `matrix[1][2]`. The snapshot is taken immediately before `main` returns. Override the report destination with `REPORT_FILE=/path/to/report.txt`.
+`-passes=implicit-taint` uses a **project-defined pipeline name** registered by `FindTaintedCondition.cpp` through LLVM's pass-plugin parsing callback. It is not a built-in LLVM pass name. The plugin also inserts `EscapeMainAllocasForDFSan` at the pipeline-start extension point so eligible `main()` locals use addressable DFSan shadow memory for labels added at runtime.
 
 ## Run
 
@@ -56,13 +52,8 @@ The report includes primitive scalar globals, elements of fixed-size arrays whos
 bash run.sh
 ```
 
-The default build expects a matching LLVM/Clang installation with `llvm-config-21`, `clang`, `clang++`, `opt`, and DataFlowSanitizer. Set `LLVM_CONFIG` to a compatible `llvm-config` executable if needed. `TEST_CASES_FILE`, `SOURCE_FILE`, and `REPORT_FILE` can override the defaults.
+The default script expects a compatible LLVM/Clang toolchain with `llvm-config-21` (or `llvm-config`), `clang`, `clang++`, `opt`, and DataFlowSanitizer. Set `LLVM_CONFIG` if the executable has a different name. `TEST_CASES_FILE`, `SOURCE_FILE`, and `REPORT_FILE` can override the default paths.
 
-## Scope and limitations
+## Validation note
 
-This is dynamic evidence from the concrete test cases, not a proof of all feasible executions. It compares final values, so a variable that changes during execution but is overwritten to the same final value is not inferred as tainted. Primitive scalar variables declared directly in `main`'s function scope, scalar globals, and individual elements of fixed-size arrays of primitive scalar elements are snapshotted. Parameters and variables declared inside nested blocks of `main`, as well as locals inside called functions, are excluded, although called functions can affect tracked globals and `main`-scope values. Array elements are snapshotted independently when they belong to fixed-size arrays of primitive scalar elements. Pointer contents and arrays whose elements are pointers/aggregates are not tracked. A local element is compared only when it was initialized and recorded in every run in the relevant public-input group.
-
-
-## Validation performed for this package
-
-The Python analyzer unit tests pass, and `test.c` plus `implicit_runtime.c` compile with the available Clang 17 C toolchain (including compiling `test.c` with `-fsanitize=dataflow`). The full LLVM pass-plugin pipeline was not executable in the packaging environment because `llvm-config`/`opt` and the LLVM C++ development headers are unavailable here. Run `bash run.sh` with the documented matching LLVM toolchain to validate the integrated instrumentation and regenerate the report.
+The Python analyzer unit tests and standalone C compilation can be run separately. The full LLVM plugin pipeline requires LLVM C++ development headers plus matching `llvm-config` and `opt`; if those are unavailable, end-to-end instrumentation cannot be claimed as tested. No branch-instrumentation callbacks are enabled or required by this value-comparison approach.

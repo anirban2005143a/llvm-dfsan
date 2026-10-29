@@ -2,8 +2,8 @@ END-OF-MAIN SCALAR VALUE REPORT
 ===============================
 
 Unique public-input tuples: 3
-Unique secret-input tuples: 6
-Program executions: 18
+Unique secret-input tuples: 5
+Program executions: 15
 Snapshot point: immediately before main returns
 Tracked variables: globals and primitive scalar variables declared directly in main scope
 Excluded: variables in nested main blocks, locals in other functions, pointers, arrays, structures, and other aggregates
@@ -20,76 +20,57 @@ Input roles inferred from dfsan_set_label calls:
 Unique secret-input tuples (reused for every public group):
   S1: s1=0, s2=0, s3=0
   S2: s1=0, s2=1, s3=0
-  S3: s1=1, s2=0, s3=1
-  S4: s1=1, s2=1, s3=1
-  S5: s1=2, s2=0, s3=1
-  S6: s1=0, s2=0, s3=-1
+  S3: s1=2, s2=1, s3=0
+  S4: s1=0, s2=0, s3=1
+  S5: s1=0, s2=0, s3=-1
 
 Taint status meanings: DIRECT = nonzero DFSan label in discovery run; IMPLICIT = final concrete value differs across secret tuples for this public tuple while baseline labels are zero; NOT TAINTED = value is stable and baseline label is zero; INCOMPLETE = a value was not recorded.
 The taint-status column is based on discovery traces, before inferred implicit labels are applied.
 
 
 PUBLIC GROUP 1
-Public inputs: a=0, b=0, c=1
+Public inputs: a=0, b=0, c=0
 
-| Scope | Variable | S1 | S2 | S3 | S4 | S5 | S6 | Taint status |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| global | global_count | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
-| global | global_ratio | 0.0 | 0.5 | 1.0 | 1.0 | 1.5 | 0.0 | IMPLICIT |
-| global | global_result | 1 | 3 | 25 | 7 | 25 | -5 (unsigned=4294967291) | IMPLICIT |
-| main | a | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
-| main | b | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
-| main | c | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
-| main | cnt | 0 | 0 | 1 | 1 | 2 | 0 | IMPLICIT |
-| main | helper_result | 1 | 1 | 5 | 5 | 5 | -5 (unsigned=4294967291) | IMPLICIT |
-| main | ratio | 0.0 | 0.5 | 1.0 | 1.0 | 1.5 | 0.0 | IMPLICIT |
-| main | s1 | 0 | 0 | 1 | 1 | 2 | 0 | DIRECT |
-| main | s2 | 0 | 1 | 0 | 1 | 0 | 0 | DIRECT |
-| main | s3 | 0 | 0 | 1 | 1 | 1 | -1 (unsigned=4294967295) | DIRECT |
-| main | x | 0 | 10 | 20 | 20 | 20 | 0 | IMPLICIT |
-| main | y | 0 | 2 | 3 | 2 | 3 | 3 | IMPLICIT |
-| main | z | 0 | 0 | 4 | 4 | 4 | -6 (unsigned=4294967290) | IMPLICIT |
+| Scope | Variable | S1 | S2 | S3 | S4 | S5 | Taint status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| main | a | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | b | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | c | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | cnt | 0 | 0 | 2 | 0 | 0 | IMPLICIT |
+| main | s1 | 0 | 0 | 2 | 0 | 0 | DIRECT |
+| main | s2 | 0 | 1 | 1 | 0 | 0 | DIRECT |
+| main | s3 | 0 | 0 | 0 | 1 | -1 (unsigned=4294967295) | DIRECT |
+| main | x | 5 | 5 | 5 | 5 | 5 | NOT TAINTED |
+| main | y | 1 | 2 | 2 | 1 | 1 | IMPLICIT |
 
 
 PUBLIC GROUP 2
-Public inputs: a=1, b=0, c=1
+Public inputs: a=0, b=1, c=0
 
-| Scope | Variable | S1 | S2 | S3 | S4 | S5 | S6 | Taint status |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| global | global_count | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
-| global | global_ratio | 0.5 | 1.0 | 1.5 | 1.5 | 2.0 | 0.5 | IMPLICIT |
-| global | global_result | 3 | 5 | 27 | 9 | 27 | -3 (unsigned=4294967293) | IMPLICIT |
-| main | a | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
-| main | b | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
-| main | c | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
-| main | cnt | 0 | 0 | 1 | 1 | 2 | 0 | IMPLICIT |
-| main | helper_result | 3 | 3 | 7 | 7 | 7 | -3 (unsigned=4294967293) | IMPLICIT |
-| main | ratio | 0.5 | 1.0 | 1.5 | 1.5 | 2.0 | 0.5 | IMPLICIT |
-| main | s1 | 0 | 0 | 1 | 1 | 2 | 0 | DIRECT |
-| main | s2 | 0 | 1 | 0 | 1 | 0 | 0 | DIRECT |
-| main | s3 | 0 | 0 | 1 | 1 | 1 | -1 (unsigned=4294967295) | DIRECT |
-| main | x | 0 | 10 | 20 | 20 | 20 | 0 | IMPLICIT |
-| main | y | 0 | 2 | 3 | 2 | 3 | 3 | IMPLICIT |
-| main | z | 2 | 2 | 6 | 6 | 6 | -4 (unsigned=4294967292) | IMPLICIT |
+| Scope | Variable | S1 | S2 | S3 | S4 | S5 | Taint status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| main | a | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | b | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
+| main | c | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
+| main | cnt | 0 | 0 | 2 | 0 | 0 | IMPLICIT |
+| main | s1 | 0 | 0 | 2 | 0 | 0 | DIRECT |
+| main | s2 | 0 | 1 | 1 | 0 | 0 | DIRECT |
+| main | s3 | 0 | 0 | 0 | 1 | -1 (unsigned=4294967295) | DIRECT |
+| main | x | 10 | 10 | 20 | 10 | 10 | IMPLICIT |
+| main | y | 1 | 2 | 2 | 1 | 1 | IMPLICIT |
 
 
 PUBLIC GROUP 3
-Public inputs: a=2, b=1, c=0
+Public inputs: a=1, b=1, c=1
 
-| Scope | Variable | S1 | S2 | S3 | S4 | S5 | S6 | Taint status |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| global | global_count | 2 | 2 | 2 | 2 | 2 | 2 | NOT TAINTED |
-| global | global_ratio | 1.0 | 1.5 | 2.0 | 2.0 | 2.5 | 1.0 | IMPLICIT |
-| global | global_result | 5 | 7 | 29 | 11 | 29 | -1 (unsigned=4294967295) | IMPLICIT |
-| main | a | 2 | 2 | 2 | 2 | 2 | 2 | NOT TAINTED |
-| main | b | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
-| main | c | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
-| main | cnt | 0 | 0 | 1 | 1 | 2 | 0 | IMPLICIT |
-| main | helper_result | 5 | 5 | 9 | 9 | 9 | -1 (unsigned=4294967295) | IMPLICIT |
-| main | ratio | 1.0 | 1.5 | 2.0 | 2.0 | 2.5 | 1.0 | IMPLICIT |
-| main | s1 | 0 | 0 | 1 | 1 | 2 | 0 | DIRECT |
-| main | s2 | 0 | 1 | 0 | 1 | 0 | 0 | DIRECT |
-| main | s3 | 0 | 0 | 1 | 1 | 1 | -1 (unsigned=4294967295) | DIRECT |
-| main | x | 0 | 10 | 20 | 20 | 20 | 0 | IMPLICIT |
-| main | y | 0 | 2 | 3 | 2 | 3 | 3 | IMPLICIT |
-| main | z | 5 | 5 | 9 | 9 | 9 | -1 (unsigned=4294967295) | IMPLICIT |
+| Scope | Variable | S1 | S2 | S3 | S4 | S5 | Taint status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| main | a | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
+| main | b | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
+| main | c | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
+| main | cnt | 0 | 0 | 2 | 0 | 0 | IMPLICIT |
+| main | s1 | 0 | 0 | 2 | 0 | 0 | DIRECT |
+| main | s2 | 0 | 1 | 1 | 0 | 0 | DIRECT |
+| main | s3 | 0 | 0 | 0 | 1 | -1 (unsigned=4294967295) | DIRECT |
+| main | x | 10 | 10 | 20 | 10 | 10 | IMPLICIT |
+| main | y | 1 | 2 | 2 | 1 | 1 | IMPLICIT |

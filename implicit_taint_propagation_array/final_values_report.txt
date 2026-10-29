@@ -35,11 +35,6 @@ Public inputs: a=0, b=0, c=0
 
 | Scope | Variable | S1 | S2 | S3 | S4 | S5 | S6 | Taint status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| global | implicit_scope[0] | 109 | 109 | 109 | 109 | 109 | 109 | NOT TAINTED |
-| global | implicit_scope[1] | 97 | 97 | 97 | 97 | 97 | 97 | NOT TAINTED |
-| global | implicit_scope[2] | 105 | 105 | 105 | 105 | 105 | 105 | NOT TAINTED |
-| global | implicit_scope[3] | 110 | 110 | 110 | 110 | 110 | 110 | NOT TAINTED |
-| global | implicit_scope[4] | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
 | main | a | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
 | main | b | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
 | main | c | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
@@ -61,11 +56,6 @@ Public inputs: a=1, b=1, c=0
 
 | Scope | Variable | S1 | S2 | S3 | S4 | S5 | S6 | Taint status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| global | implicit_scope[0] | 109 | 109 | 109 | 109 | 109 | 109 | NOT TAINTED |
-| global | implicit_scope[1] | 97 | 97 | 97 | 97 | 97 | 97 | NOT TAINTED |
-| global | implicit_scope[2] | 105 | 105 | 105 | 105 | 105 | 105 | NOT TAINTED |
-| global | implicit_scope[3] | 110 | 110 | 110 | 110 | 110 | 110 | NOT TAINTED |
-| global | implicit_scope[4] | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
 | main | a | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
 | main | b | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
 | main | c | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
@@ -87,11 +77,6 @@ Public inputs: a=1, b=0, c=1
 
 | Scope | Variable | S1 | S2 | S3 | S4 | S5 | S6 | Taint status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| global | implicit_scope[0] | 109 | 109 | 109 | 109 | 109 | 109 | NOT TAINTED |
-| global | implicit_scope[1] | 97 | 97 | 97 | 97 | 97 | 97 | NOT TAINTED |
-| global | implicit_scope[2] | 105 | 105 | 105 | 105 | 105 | 105 | NOT TAINTED |
-| global | implicit_scope[3] | 110 | 110 | 110 | 110 | 110 | 110 | NOT TAINTED |
-| global | implicit_scope[4] | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
 | main | a | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |
 | main | b | 0 | 0 | 0 | 0 | 0 | 0 | NOT TAINTED |
 | main | c | 1 | 1 | 1 | 1 | 1 | 1 | NOT TAINTED |

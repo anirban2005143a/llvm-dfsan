@@ -2,6 +2,12 @@
 #include <stdbool.h>
 #include <sanitizer/dfsan_interface.h>
 
+int add(int a, int b){
+    int x = a;
+    int y = b;
+    return (x+y);
+}
+
 int main(int argc, char **argv) {
     if (argc != 4)
         return 1;
@@ -25,22 +31,21 @@ int main(int argc, char **argv) {
 
     if ((s1)) {
         x = 20;
-        if(s2){
-            y = 20;
-        }
     } else if (s2) {
-        
+         y = 20;
     } else if (s3) {
     } else {
     }
 
-    a = x;
-    b = y;
+    // a = x;
+    // b = y;
 
     x = 10;
     y = 10;
 
     c = a+b;
+
+    int e = add(c,s3);
 
     return 0;
 }
