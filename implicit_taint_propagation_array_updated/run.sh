@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-TEST_CASES_FILE="${TEST_CASES_FILE:-$ROOT/test_cases.txt}"
-SOURCE_FILE="${SOURCE_FILE:-$ROOT/test.c}"
+TEST_CASES_FILE="${TEST_CASES_FILE:-$ROOT/AES_ENC_test_cases.txt}"
+SOURCE_FILE="${SOURCE_FILE:-$ROOT/AES_ENC.c}"
 REPORT_FILE="${REPORT_FILE:-$ROOT/final_values_report.txt}"
 BUILD="$(mktemp -d /tmp/implicit_taint_build.XXXXXX)"
 EXECUTION_CASES_FILE="$BUILD/expanded_test_cases.txt"

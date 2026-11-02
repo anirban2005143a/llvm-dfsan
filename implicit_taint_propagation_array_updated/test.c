@@ -28,6 +28,10 @@ int main(int argc, char **argv) {
 
     // Conditional array updates using public and secret inputs
     for (int i = 0; i < n; i++) {
+        if(i < n/2) {
+            arr[i] = 20;
+            continue;
+        }
         if (public1 != 0 && secret1 > 0) {
             arr[i] = arr[i] + secret1;
         } 

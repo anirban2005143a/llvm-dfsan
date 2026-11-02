@@ -36,6 +36,9 @@ class InputSchema:
     column_names: List[str]
     array_names: Set[str]
     secret_names: Set[str]
+    # Fixed-size arrays map to their declared element count. None denotes a
+    # VLA (or an array bound that is not a literal integer constant).
+    array_sizes: Dict[str, int | None]
 
 
 def _normalise_field(value: str) -> str:
@@ -50,9 +53,17 @@ def _normalise_field(value: str) -> str:
     return ",".join(elements)
 
 
-def read_test_cases(path: pathlib.Path) -> Tuple[List[str], List[InputRow]]:
-    """Read unique test rows. Rows may use | or whitespace as field separators."""
+def _read_test_cases_with_metadata(
+    path: pathlib.Path,
+) -> Tuple[List[str], List[InputRow], Dict[str, int]]:
+    """Read rows and optional fixed array extents from header tokens.
+
+    Both ``key`` and ``key[32]`` are accepted. Array names are normalized to
+    ``key`` internally; an optional header extent is checked against the C
+    declaration rather than being used to override it.
+    """
     column_names: List[str] | None = None
+    header_array_sizes: Dict[str, int] = {}
     cases: List[InputRow] = []
     seen: Set[InputRow] = set()
 
@@ -66,11 +77,28 @@ def read_test_cases(path: pathlib.Path) -> Tuple[List[str], List[InputRow]]:
                 if match:
                     if column_names is not None:
                         raise RuntimeError(f"{path}:{line_number}: input header appears more than once")
-                    names = match.group(1).split()
-                    if not names or any(
-                        not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) for name in names
-                    ):
+                    tokens = match.group(1).split()
+                    if not tokens:
                         raise RuntimeError(f"{path}:{line_number}: invalid or empty input header")
+                    names: List[str] = []
+                    for token in tokens:
+                        column = re.fullmatch(
+                            r"([A-Za-z_][A-Za-z0-9_]*)(?:\[(\d+)\])?", token
+                        )
+                        if not column:
+                            raise RuntimeError(
+                                f"{path}:{line_number}: invalid input column {token!r}; "
+                                "use name or name[fixed_size]"
+                            )
+                        name, size_text = column.groups()
+                        names.append(name)
+                        if size_text is not None:
+                            size = int(size_text)
+                            if size <= 0:
+                                raise RuntimeError(
+                                    f"{path}:{line_number}: array size for '{name}' must be positive"
+                                )
+                            header_array_sizes[name] = size
                     if len(set(names)) != len(names):
                         raise RuntimeError(f"{path}:{line_number}: duplicate input name")
                     column_names = names
@@ -103,6 +131,12 @@ def read_test_cases(path: pathlib.Path) -> Tuple[List[str], List[InputRow]]:
         raise RuntimeError(f"test-case file has no '# inputs: ...' header: {path}")
     if not cases:
         raise RuntimeError(f"test-case file contains no test cases: {path}")
+    return column_names, cases, header_array_sizes
+
+
+def read_test_cases(path: pathlib.Path) -> Tuple[List[str], List[InputRow]]:
+    """Backward-compatible reader returning normalized names and input rows."""
+    column_names, cases, _header_array_sizes = _read_test_cases_with_metadata(path)
     return column_names, cases
 
 
@@ -163,15 +197,177 @@ def _strip_outer_parentheses_and_casts(expression: str) -> str:
     return expression
 
 
-def _find_declared_input_arrays(source: str, column_names: Sequence[str]) -> Set[str]:
-    """Find primitive arrays, including VLAs whose bound is a runtime expression."""
-    primitive = r"(?:char|short|int|long|float|double|_Bool)"
-    qualifiers = r"(?:(?:static|extern|const|volatile|unsigned|signed|short|long)\s+)*"
-    declaration = re.compile(
-        r"\b" + qualifiers + primitive + r"\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[[^\]]*\]"
+def _parse_c_array_bound(expression: str) -> int | None:
+    """Return a literal C array bound, or None for a VLA/macro expression."""
+    value = re.sub(r"[uUlL]+$", "", expression.strip())
+    if not re.fullmatch(r"(?:0[xX][0-9A-Fa-f]+|0[0-7]*|[1-9][0-9]*)", value):
+        return None
+    try:
+        return int(value, 0)
+    except ValueError:
+        return None
+
+
+def _find_declared_input_arrays(
+    source: str, column_names: Sequence[str]
+) -> Dict[str, int | None]:
+    """Find input arrays declared at file scope or directly in ``main``.
+
+    File-scope arrays are included because the LLVM pass registers supported
+    globals from the module. Local arrays are included only when declared in
+    main's outermost function block. Arrays declared in helper functions,
+    nested blocks, or loop initializers/bodies are deliberately excluded.
+
+    Typedef-based numeric element types (for example uint8_t) are accepted as
+    declaration type names. The LLVM pass remains responsible for deciding
+    whether the actual element type is supported for snapshotting.
+    """
+    body_open = body_end = -1
+    # A source file may contain a prototype such as `int main(void);` before
+    # the definition. Find the definition specifically; do not mistake the
+    # next function's body for main's body.
+    for main_match in re.finditer(r"\bmain\s*\(", source):
+        open_paren = source.find("(", main_match.start())
+        paren_depth = 1
+        close_paren = open_paren + 1
+        while close_paren < len(source) and paren_depth:
+            if source[close_paren] == "(":
+                paren_depth += 1
+            elif source[close_paren] == ")":
+                paren_depth -= 1
+            close_paren += 1
+        if paren_depth != 0:
+            continue
+
+        # Skip attributes/qualifiers after the parameter list. A top-level
+        # semicolon means this occurrence is only a prototype; a top-level
+        # opening brace begins the function definition.
+        suffix_parens = 0
+        candidate_body_open = -1
+        cursor_after_params = close_paren
+        while cursor_after_params < len(source):
+            char = source[cursor_after_params]
+            if char == "(":
+                suffix_parens += 1
+            elif char == ")":
+                suffix_parens = max(0, suffix_parens - 1)
+            elif suffix_parens == 0 and char == ";":
+                break
+            elif suffix_parens == 0 and char == "{":
+                candidate_body_open = cursor_after_params
+                break
+            cursor_after_params += 1
+        if candidate_body_open < 0:
+            continue
+
+        candidate_body_end = candidate_body_open + 1
+        lexical_braces = 1
+        while candidate_body_end < len(source) and lexical_braces:
+            if source[candidate_body_end] == "{":
+                lexical_braces += 1
+            elif source[candidate_body_end] == "}":
+                lexical_braces -= 1
+            candidate_body_end += 1
+        if lexical_braces == 0:
+            body_open, body_end = candidate_body_open, candidate_body_end
+            break
+
+    qualifiers = (
+        r"(?:(?:static|extern|const|volatile|register|auto|unsigned|signed|short|long)\s+)*"
     )
-    declared = {match.group(1) for match in declaration.finditer(source)}
-    return set(column_names) & declared
+    numeric_aliases = {
+        "bool", "size_t", "ssize_t", "ptrdiff_t", "intptr_t", "uintptr_t",
+        "int8_t", "uint8_t", "int16_t", "uint16_t", "int32_t", "uint32_t",
+        "int64_t", "uint64_t", "int_least8_t", "uint_least8_t",
+        "int_least16_t", "uint_least16_t", "int_least32_t", "uint_least32_t",
+        "int_least64_t", "uint_least64_t", "int_fast8_t", "uint_fast8_t",
+        "int_fast16_t", "uint_fast16_t", "int_fast32_t", "uint_fast32_t",
+        "int_fast64_t", "uint_fast64_t", "intmax_t", "uintmax_t", "wchar_t",
+    }
+    # Also learn simple numeric typedefs declared in the supplied source, e.g.
+    # `typedef unsigned char AES_BYTE;`. Do not treat every identifier as a
+    # possible type: that would misread expressions such as `return data[4]`.
+    base_numeric_types = (
+        r"(?:_Bool|bool|char|short|int|long|float|double|"
+        r"(?:u?int(?:8|16|32|64)_t))"
+    )
+    typedef_pattern = re.compile(
+        r"\btypedef\s+(?:(?:unsigned|signed|short|long)\s+)*"
+        + base_numeric_types
+        + r"\s+([A-Za-z_][A-Za-z0-9_]*)\s*;"
+    )
+    for typedef_match in typedef_pattern.finditer(source):
+        numeric_aliases.add(typedef_match.group(1))
+    aliases = "|".join(re.escape(alias) for alias in sorted(numeric_aliases))
+    element_type = r"(?:_Bool|char|short|int|long|float|double|" + aliases + r")"
+    declaration = re.compile(
+        r"\b" + qualifiers + element_type
+        + r"\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*([^\]]*)\s*\]"
+    )
+    comma_declarator = re.compile(
+        r",\s*([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*([^\]]*)\s*\]"
+    )
+    wanted = set(column_names)
+    found: Dict[str, int | None] = {}
+
+    def add_array(name: str, bound_expression: str) -> None:
+        if name not in wanted:
+            return
+        bound = _parse_c_array_bound(bound_expression)
+        if bound is not None and bound <= 0:
+            raise RuntimeError(f"array '{name}' has a non-positive declared size")
+        if name in found and found[name] != bound:
+            raise RuntimeError(
+                f"input array '{name}' has multiple or ambiguous declarations "
+                "with different sizes in file scope/main scope"
+            )
+        found[name] = bound
+
+    # Track lexical brace/parenthesis depth at each declaration match. At a
+    # file-scope object declaration both depths are zero. A direct declaration
+    # in main has brace depth one and parenthesis depth zero. This avoids
+    # mistaking function parameters, helper-function locals, nested blocks,
+    # and `for (int local[N] = ...; ...)` declarations for program inputs.
+    brace_depth = 0
+    paren_depth = 0
+    cursor = 0
+    for match in declaration.finditer(source):
+        while cursor < match.start():
+            char = source[cursor]
+            if char == "{":
+                brace_depth += 1
+            elif char == "}":
+                brace_depth = max(0, brace_depth - 1)
+            elif char == "(":
+                paren_depth += 1
+            elif char == ")":
+                paren_depth = max(0, paren_depth - 1)
+            cursor += 1
+
+        is_file_scope = brace_depth == 0 and paren_depth == 0
+        is_direct_main_scope = (
+            body_open >= 0
+            and body_end > body_open
+            and body_open < match.start() < body_end - 1
+            and brace_depth == 1
+            and paren_depth == 0
+        )
+        if not (is_file_scope or is_direct_main_scope):
+            continue
+
+        name, bound_expression = match.groups()
+        add_array(name, bound_expression)
+
+        # Also accept declarations such as `unsigned char key[32], statemt[32]`.
+        # Limit the scan to this declaration's semicolon so commas in later
+        # statements cannot be mistaken for additional declarators.
+        declaration_end = source.find(";", match.end())
+        if declaration_end < 0:
+            declaration_end = len(source)
+        for extra in comma_declarator.finditer(source, match.end(), declaration_end):
+            add_array(*extra.groups())
+
+    return found
 
 
 def _extract_direct_label_targets(
@@ -234,27 +430,51 @@ def _extract_direct_label_targets(
 
 
 def _build_input_schema(
-    column_names: List[str], cases: Sequence[InputRow], source_path: pathlib.Path
+    column_names: List[str],
+    cases: Sequence[InputRow],
+    source_path: pathlib.Path,
+    header_array_sizes: Mapping[str, int] | None = None,
 ) -> InputSchema:
     source = _remove_c_comments_and_strings(source_path.read_text(encoding="utf-8"))
-    array_names = _find_declared_input_arrays(source, column_names)
+    array_sizes = _find_declared_input_arrays(source, column_names)
+    array_names = set(array_sizes)
+    header_array_sizes = header_array_sizes or {}
+
+    for name, header_size in header_array_sizes.items():
+        if name not in array_names:
+            raise RuntimeError(
+                f"input header marks '{name}[{header_size}]' as an array, "
+                f"but no array named '{name}' is declared in main"
+            )
+        source_size = array_sizes[name]
+        if source_size is None:
+            raise RuntimeError(
+                f"input header gives '{name}' a fixed size ({header_size}), "
+                "but its C declaration is variable-sized or uses a non-literal bound"
+            )
+        if source_size != header_size:
+            raise RuntimeError(
+                f"array size mismatch for '{name}': header says {header_size}, "
+                f"but the C declaration has {source_size} elements"
+            )
 
     for index, name in enumerate(column_names):
         if any("," in row[index] for row in cases) and name not in array_names:
             raise RuntimeError(
                 f"input '{name}' contains comma-separated values, but no primitive array "
-                f"named '{name}' is declared in the source"
+                f"named '{name}' is declared in main"
             )
 
-    if len(array_names) > 1:
+    variable_arrays = [name for name, size in array_sizes.items() if size is None]
+    if len(variable_arrays) > 1:
         raise RuntimeError(
-            "this argv layout supports one variable-length array input; "
-            "combine the required elements into one array input"
+            "multiple variable-length input arrays cannot be separated in argv without "
+            "explicit length arguments; use fixed-size C arrays or provide one VLA as the last input"
         )
-    if array_names and column_names[-1] not in array_names:
+    if variable_arrays and column_names[-1] != variable_arrays[0]:
         raise RuntimeError(
-            "the variable-length array input must be the last test-case column "
-            "so its elements can occupy the remaining argv entries"
+            f"variable-length array '{variable_arrays[0]}' must be the last test-case column; "
+            "fixed-size arrays may appear anywhere"
         )
 
     # A detected array is not automatically a secret input. It belongs to the
@@ -263,15 +483,41 @@ def _build_input_schema(
     # remains part of the public-input tuple.
     secret_names = _extract_direct_label_targets(source_path, array_names)
 
-    for name in array_names:
+    for name, size in array_sizes.items():
         column_index = column_names.index(name)
         for row in cases:
-            if any(not re.fullmatch(r"[+-]?\d+", item) for item in row[column_index].split(",")):
+            elements = row[column_index].split(",")
+            if any(not re.fullmatch(r"[+-]?\d+", item) for item in elements):
                 raise RuntimeError(f"array input '{name}' must contain comma-separated integers")
+            if size is not None and len(elements) > size:
+                raise RuntimeError(
+                    f"array input '{name}' has {len(elements)} values, exceeding its declared size {size}"
+                )
 
     if not secret_names.intersection(column_names):
         raise RuntimeError("no test-case input column matches a direct dfsan_set_label target")
-    return InputSchema(column_names, array_names, secret_names)
+    return InputSchema(column_names, array_names, secret_names, array_sizes)
+
+
+def _normalise_rows_for_schema(
+    rows: Sequence[InputRow], schema: InputSchema
+) -> List[InputRow]:
+    """Pad supplied fixed-array prefixes with zeroes to their C array extent."""
+    normalized: List[InputRow] = []
+    for row in rows:
+        values = list(row)
+        for index, name in enumerate(schema.column_names):
+            size = schema.array_sizes.get(name)
+            if size is None:
+                continue
+            elements = values[index].split(",")
+            if len(elements) > size:
+                raise RuntimeError(
+                    f"array input '{name}' has {len(elements)} values, exceeding its declared size {size}"
+                )
+            values[index] = ",".join(elements + ["0"] * (size - len(elements)))
+        normalized.append(tuple(values))
+    return normalized
 
 
 def _split_row_keys(row: InputRow, schema: InputSchema) -> Tuple[InputTuple, InputTuple]:
@@ -292,8 +538,9 @@ def expand_test_cases(
     public/secret role is determined by whether the whole array is directly
     labeled; it is never split into element-level tuple combinations.
     """
-    column_names, supplied_rows = read_test_cases(input_path)
-    schema = _build_input_schema(column_names, supplied_rows, source_path)
+    column_names, raw_rows, header_array_sizes = _read_test_cases_with_metadata(input_path)
+    schema = _build_input_schema(column_names, raw_rows, source_path, header_array_sizes)
+    supplied_rows = _normalise_rows_for_schema(raw_rows, schema)
 
     public_tuples = list(dict.fromkeys(_split_row_keys(row, schema)[0] for row in supplied_rows))
     secret_tuples = list(dict.fromkeys(_split_row_keys(row, schema)[1] for row in supplied_rows))
@@ -333,15 +580,16 @@ def expand_test_cases(
 def write_argv_cases(
     input_path: pathlib.Path, source_path: pathlib.Path, output_path: pathlib.Path
 ) -> int:
-    """Flatten each packed array field into individual argv entries.
+    """Flatten logical array fields into stable argv segments.
 
-    The logical execution-case file keeps an array such as ``10,20`` as ONE
-    public or secret tuple value, depending on its source label. This second
-    file is only the process argument layout: the array becomes two separate
-    arguments (``10`` and ``20``), so C can read them directly with ``arr[i] = atoi(argv[array_start + i])``.
+    Fixed-size arrays occupy exactly their declared element count; shorter
+    supplied prefixes are zero-padded and overlong values are rejected. A
+    single VLA may appear as the final input column and consumes its supplied
+    elements without padding. Each logical array remains one tuple field.
     """
-    column_names, cases = read_test_cases(input_path)
-    schema = _build_input_schema(column_names, cases, source_path)
+    column_names, raw_cases, header_array_sizes = _read_test_cases_with_metadata(input_path)
+    schema = _build_input_schema(column_names, raw_cases, source_path, header_array_sizes)
+    cases = _normalise_rows_for_schema(raw_cases, schema)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as out:
@@ -408,8 +656,9 @@ def build_label_plan(
     cases_path: pathlib.Path,
     source_path: pathlib.Path,
 ) -> List[VariableKey]:
-    column_names, cases = read_test_cases(cases_path)
-    schema = _build_input_schema(column_names, cases, source_path)
+    column_names, raw_cases, header_array_sizes = _read_test_cases_with_metadata(cases_path)
+    schema = _build_input_schema(column_names, raw_cases, source_path, header_array_sizes)
+    cases = _normalise_rows_for_schema(raw_cases, schema)
     snapshots = read_snapshots(trace_dir, len(cases))
 
     groups: DefaultDict[InputTuple, List[int]] = collections.defaultdict(list)
@@ -491,8 +740,9 @@ def write_debug_report(
     source_path: pathlib.Path,
     report_path: pathlib.Path,
 ) -> None:
-    column_names, cases = read_test_cases(cases_path)
-    schema = _build_input_schema(column_names, cases, source_path)
+    column_names, raw_cases, header_array_sizes = _read_test_cases_with_metadata(cases_path)
+    schema = _build_input_schema(column_names, raw_cases, source_path, header_array_sizes)
+    cases = _normalise_rows_for_schema(raw_cases, schema)
     final_snapshots = read_snapshots(final_trace_dir, len(cases))
     discovery_snapshots = read_snapshots(discovery_trace_dir, len(cases))
 
@@ -512,10 +762,13 @@ def write_debug_report(
         out.write(f"Unique public-input tuples: {len(public_groups)}\n")
         out.write(f"Unique secret-input tuples: {len({secret for entries in public_groups.values() for _, secret in entries})}\n")
         out.write(f"Program executions: {len(cases)}\n")
-        out.write("Snapshot point: immediately before main returns\n")
-        out.write("Each packed array is ONE input tuple value; it is public unless the whole array is directly labeled.\n")
-        out.write("At runtime, every existing array element is recorded and label-checked separately.\n")
-        out.write("Array lengths may differ between executions; absent elements are shown as <not recorded>.\n\n")
+        out.write(
+            "Snapshot point: at main exit; before the stackrestore that releases a tracked VLA, when applicable.\n"
+        )
+        out.write("Each array is ONE input tuple value; it is public unless the whole array is directly labeled.\n")
+        out.write("Fixed-size arrays are zero-padded to their declared C extent before execution.\n")
+        out.write("At runtime, each array element is recorded and label-checked separately.\n")
+        out.write("A single VLA may be used as the final input column; its supplied length may vary.\n\n")
 
         out.write("Input roles:\n")
         for name in column_names:
@@ -548,6 +801,22 @@ def write_debug_report(
             out.write(f"\n\nPUBLIC GROUP {group_number}\n")
             out.write(f"Public inputs: {public_values}\n")
             out.write(f"Secret combinations: {len(secret_tuples_in_group)}\n\n")
+            out.write("Secret-input combination mapping:\n")
+            out.write("| Combination | Exact secret input values |\n")
+            out.write("| --- | --- |\n")
+            for secret_key in secret_tuples_in_group:
+                mapped_values = []
+                for name, value in secret_key:
+                    if name in schema.array_names:
+                        mapped_values.append(f"{name}=[{value}]")
+                    else:
+                        mapped_values.append(f"{name}={value}")
+                description = ", ".join(mapped_values) or "<no secret inputs>"
+                out.write(
+                    f"| {secret_ids[secret_key]} | "
+                    f"{markdown_cell(description)} |\n"
+                )
+            out.write("\n")
             headers = ["Scope", "Variable"] + [secret_ids[key] for key in secret_tuples_in_group] + ["Taint status"]
             out.write("| " + " | ".join(headers) + " |\n")
             out.write("| " + " | ".join(["---"] * len(headers)) + " |\n")

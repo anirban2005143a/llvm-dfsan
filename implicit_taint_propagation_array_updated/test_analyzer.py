@@ -169,6 +169,127 @@ class AnalyzerTests(unittest.TestCase):
         )
         self.assertEqual(analyzer.classify_group_status([direct, None]), "DIRECT")
 
+    def test_two_fixed_arrays_accept_size_annotations_and_zero_pad(self):
+        source = r'''#include <sanitizer/dfsan_interface.h>
+#include <stdlib.h>
+int main(int argc, char **argv) {
+    int type = atoi(argv[1]);
+    unsigned char key[32], statemt[32];
+    for (int i = 0; i < 32; ++i) {
+        key[i] = (unsigned char)atoi(argv[2 + i]);
+        statemt[i] = (unsigned char)atoi(argv[34 + i]);
+    }
+    dfsan_set_label(1, &type, sizeof(type));
+    dfsan_set_label(2, key, sizeof(key));
+    return 0;
+}
+'''
+        self.source_path.write_text(source, encoding="utf-8")
+        self.cases_path.write_text(
+            "# inputs: type key[32] statemt[32]\n"
+            "2|1,3,4,5,4|2,3,4\n"
+            "3|1,3,4,5,4|2,3,4\n"
+            "2|1,3,4,5,4|5,6,7\n"
+            "3|1,3,4,5,4|5,6,7\n",
+            encoding="utf-8",
+        )
+
+        columns, rows = analyzer.read_test_cases(self.cases_path)
+        self.assertEqual(columns, ["type", "key", "statemt"])
+        full_columns, full_rows, header_sizes = analyzer._read_test_cases_with_metadata(
+            self.cases_path
+        )
+        schema = analyzer._build_input_schema(
+            full_columns, full_rows, self.source_path, header_sizes
+        )
+        self.assertEqual(schema.array_names, {"key", "statemt"})
+        self.assertEqual(schema.array_sizes, {"key": 32, "statemt": 32})
+        self.assertEqual(schema.secret_names, {"type", "key"})
+
+        expanded_path = self.root / "expanded_multi_array.txt"
+        self.assertEqual(
+            analyzer.expand_test_cases(self.cases_path, self.source_path, expanded_path),
+            4,
+        )
+        expanded_columns, expanded_rows = analyzer.read_test_cases(expanded_path)
+        self.assertEqual(expanded_columns, ["type", "key", "statemt"])
+        self.assertEqual(len(expanded_rows[0][1].split(",")), 32)
+        self.assertEqual(len(expanded_rows[0][2].split(",")), 32)
+        self.assertEqual(expanded_rows[0][1].split(",")[:5], ["1", "3", "4", "5", "4"])
+        self.assertEqual(expanded_rows[0][1].split(",")[5:], ["0"] * 27)
+
+        argv_path = self.root / "argv_multi_array.txt"
+        analyzer.write_argv_cases(expanded_path, self.source_path, argv_path)
+        argv_rows = [line.split("|") for line in argv_path.read_text().splitlines()]
+        self.assertEqual(len(argv_rows[0]), 65)  # type + key[32] + statemt[32]
+        self.assertEqual(argv_rows[0][0], "2")
+        self.assertEqual(argv_rows[0][1:6], ["1", "3", "4", "5", "4"])
+        self.assertEqual(argv_rows[0][33:36], ["2", "3", "4"])
+        self.assertEqual(argv_rows[0][36:], ["0"] * 29)
+
+    def test_fixed_array_header_size_must_match_c_declaration(self):
+        source = "int main(void) { int secret; int key[32]; dfsan_set_label(1, &secret, sizeof(secret)); return 0; }"
+        self.source_path.write_text(source, encoding="utf-8")
+        self.cases_path.write_text(
+            "# inputs: secret key[31]\n1|1,2\n2|1,2\n", encoding="utf-8"
+        )
+        columns, rows, header_sizes = analyzer._read_test_cases_with_metadata(
+            self.cases_path
+        )
+        with self.assertRaisesRegex(RuntimeError, "array size mismatch"):
+            analyzer._build_input_schema(columns, rows, self.source_path, header_sizes)
+
+    def test_fixed_array_rejects_more_values_than_its_capacity(self):
+        source = "int main(void) { int secret; int key[2]; dfsan_set_label(1, &secret, sizeof(secret)); return 0; }"
+        self.source_path.write_text(source, encoding="utf-8")
+        self.cases_path.write_text(
+            "# inputs: secret key[2]\n1|1,2,3\n2|1,2,3\n", encoding="utf-8"
+        )
+        columns, rows, header_sizes = analyzer._read_test_cases_with_metadata(
+            self.cases_path
+        )
+        with self.assertRaisesRegex(RuntimeError, "exceeding its declared size"):
+            analyzer._build_input_schema(columns, rows, self.source_path, header_sizes)
+
+    def test_report_prints_exact_secret_tuple_for_each_s_id(self):
+        source = r'''#include <sanitizer/dfsan_interface.h>
+int main(void) {
+    int secret;
+    int key[4];
+    int statemt[4];
+    dfsan_set_label(1, &secret, sizeof(secret));
+    dfsan_set_label(2, key, sizeof(key));
+    return 0;
+}
+'''
+        self.source_path.write_text(source, encoding="utf-8")
+        self.cases_path.write_text(
+            "# inputs: secret key[4] statemt[4]\n"
+            "10|1,2|7,8\n"
+            "20|1,2|7,8\n",
+            encoding="utf-8",
+        )
+        expanded_path = self.root / "report_cases.txt"
+        analyzer.expand_test_cases(self.cases_path, self.source_path, expanded_path)
+        _, expanded_rows = analyzer.read_test_cases(expanded_path)
+        final_dir = self.root / "final"
+        discovery_dir = self.root / "discovery"
+        final_dir.mkdir()
+        discovery_dir.mkdir()
+        for index, row in enumerate(expanded_rows):
+            value = int(row[0])
+            record = self._record("result", value, label=0)
+            (final_dir / f"case_{index}.trace").write_text(record, encoding="utf-8")
+            (discovery_dir / f"case_{index}.trace").write_text(record, encoding="utf-8")
+
+        report_path = self.root / "report.md"
+        analyzer.write_debug_report(
+            final_dir, discovery_dir, expanded_path, self.source_path, report_path
+        )
+        report = report_path.read_text(encoding="utf-8")
+        self.assertIn("| S1 | secret=10, key=[1,2,0,0] |", report)
+        self.assertIn("| S2 | secret=20, key=[1,2,0,0] |", report)
+
     @staticmethod
     def _record(name, value, label):
         value_hex = struct.pack("=i", value).hex()
