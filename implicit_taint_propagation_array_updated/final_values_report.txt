@@ -1,0 +1,123 @@
+END-OF-MAIN VALUE REPORT (SCALARS AND ARRAY ELEMENTS)
+=====================================================
+
+Unique public-input tuples: 6
+Unique secret-input tuples: 2
+Program executions: 12
+Snapshot point: immediately before main returns
+Each packed array is ONE input tuple value; it is public unless the whole array is directly labeled.
+At runtime, every existing array element is recorded and label-checked separately.
+Array lengths may differ between executions; absent elements are shown as <not recorded>.
+
+Input roles:
+  public1: PUBLIC INPUT
+  public2: PUBLIC INPUT
+  n: PUBLIC INPUT
+  secret1: SECRET INPUT
+  secret2: SECRET INPUT
+  arr: PUBLIC INPUT (elements label-checked separately)
+
+Taint status meanings: DIRECT = nonzero DFSan label in discovery run; IMPLICIT = final concrete value differs across secret tuples for the same public tuple while all compared discovery labels are zero; NOT TAINTED = stable value with zero label; INCOMPLETE = value absent in one or more compared executions.
+Statuses are based on discovery traces, before inferred implicit labels are applied.
+
+
+PUBLIC GROUP 1
+Public inputs: public1=0, public2=0, n=4, arr=10,20,30,40
+Secret combinations: 2
+
+| Scope | Variable | S1 | S2 | Taint status |
+| --- | --- | --- | --- | --- |
+| main | arr[0] | 20 | 20 | NOT TAINTED |
+| main | arr[1] | 10 | 10 | NOT TAINTED |
+| main | arr[2] | 20 | 20 | NOT TAINTED |
+| main | arr[3] | 10 | 10 | NOT TAINTED |
+| main | n | 4 | 4 | NOT TAINTED |
+| main | public1 | 0 | 0 | NOT TAINTED |
+| main | public2 | 0 | 0 | NOT TAINTED |
+| main | secret1 | 10 | -10 (unsigned=4294967286) | DIRECT |
+| main | secret2 | 20 | 20 | DIRECT |
+
+
+PUBLIC GROUP 2
+Public inputs: public1=1, public2=0, n=4, arr=10,20,30,40
+Secret combinations: 2
+
+| Scope | Variable | S1 | S2 | Taint status |
+| --- | --- | --- | --- | --- |
+| main | arr[0] | 20 | 20 | DIRECT |
+| main | arr[1] | 30 | 10 | DIRECT |
+| main | arr[2] | 40 | 20 | DIRECT |
+| main | arr[3] | 50 | 10 | DIRECT |
+| main | n | 4 | 4 | NOT TAINTED |
+| main | public1 | 1 | 1 | NOT TAINTED |
+| main | public2 | 0 | 0 | NOT TAINTED |
+| main | secret1 | 10 | -10 (unsigned=4294967286) | DIRECT |
+| main | secret2 | 20 | 20 | DIRECT |
+
+
+PUBLIC GROUP 3
+Public inputs: public1=0, public2=1, n=4, arr=10,20,30,40
+Secret combinations: 2
+
+| Scope | Variable | S1 | S2 | Taint status |
+| --- | --- | --- | --- | --- |
+| main | arr[0] | 20 | 20 | NOT TAINTED |
+| main | arr[1] | 10 | 10 | NOT TAINTED |
+| main | arr[2] | 20 | 20 | NOT TAINTED |
+| main | arr[3] | 10 | 10 | NOT TAINTED |
+| main | n | 4 | 4 | NOT TAINTED |
+| main | public1 | 0 | 0 | NOT TAINTED |
+| main | public2 | 1 | 1 | NOT TAINTED |
+| main | secret1 | 10 | -10 (unsigned=4294967286) | DIRECT |
+| main | secret2 | 20 | 20 | DIRECT |
+
+
+PUBLIC GROUP 4
+Public inputs: public1=0, public2=1, n=4, arr=10,20,30,-40
+Secret combinations: 2
+
+| Scope | Variable | S1 | S2 | Taint status |
+| --- | --- | --- | --- | --- |
+| main | arr[0] | 20 | 20 | NOT TAINTED |
+| main | arr[1] | 10 | 10 | NOT TAINTED |
+| main | arr[2] | 20 | 20 | NOT TAINTED |
+| main | arr[3] | 10 | 10 | NOT TAINTED |
+| main | n | 4 | 4 | NOT TAINTED |
+| main | public1 | 0 | 0 | NOT TAINTED |
+| main | public2 | 1 | 1 | NOT TAINTED |
+| main | secret1 | 10 | -10 (unsigned=4294967286) | DIRECT |
+| main | secret2 | 20 | 20 | DIRECT |
+
+
+PUBLIC GROUP 5
+Public inputs: public1=1, public2=1, n=4, arr=10,20,30,40
+Secret combinations: 2
+
+| Scope | Variable | S1 | S2 | Taint status |
+| --- | --- | --- | --- | --- |
+| main | arr[0] | 20 | 20 | DIRECT |
+| main | arr[1] | 30 | 10 | DIRECT |
+| main | arr[2] | 40 | 20 | DIRECT |
+| main | arr[3] | 50 | 10 | DIRECT |
+| main | n | 4 | 4 | NOT TAINTED |
+| main | public1 | 1 | 1 | NOT TAINTED |
+| main | public2 | 1 | 1 | NOT TAINTED |
+| main | secret1 | 10 | -10 (unsigned=4294967286) | DIRECT |
+| main | secret2 | 20 | 20 | DIRECT |
+
+
+PUBLIC GROUP 6
+Public inputs: public1=1, public2=1, n=4, arr=10,20,30,-40
+Secret combinations: 2
+
+| Scope | Variable | S1 | S2 | Taint status |
+| --- | --- | --- | --- | --- |
+| main | arr[0] | 20 | 20 | DIRECT |
+| main | arr[1] | 30 | 10 | DIRECT |
+| main | arr[2] | 40 | 20 | DIRECT |
+| main | arr[3] | -30 (unsigned=4294967266) | 10 | DIRECT |
+| main | n | 4 | 4 | NOT TAINTED |
+| main | public1 | 1 | 1 | NOT TAINTED |
+| main | public2 | 1 | 1 | NOT TAINTED |
+| main | secret1 | 10 | -10 (unsigned=4294967286) | DIRECT |
+| main | secret2 | 20 | 20 | DIRECT |
