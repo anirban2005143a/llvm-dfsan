@@ -1,0 +1,4 @@
+results/
+*.bc
+*.o
+__pycache__/
